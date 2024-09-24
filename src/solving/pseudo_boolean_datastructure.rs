@@ -1,19 +1,48 @@
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashSet};
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
 use crate::parsing::equation_datastructure::EquationKind::{Eq, Le};
+use crate::solving::pseudo_boolean_datastructure::PropagationResult::{ImpliedLiteral, LiteralNotInConstraint, Satisfied, Unsatisfied};
+use crate::solving::solver::Solver;
 
 pub struct PseudoBooleanFormula {
     pub constraints: Vec<Constraint>,
+    pub number_variables: u32,
+    pub constraints_by_variable: Vec<Vec<usize>>
 }
 
 pub struct Constraint {
-    pub literals: Vec<Literal>,
-    pub degree: i32,
+    literals: Vec<Option<Literal>>,
+    unassigned_literals: HashSet<Literal>,
+    degree: i32,
+    sum_true: u32,
+    sum_unassigned: u32,
 }
 
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Literal {
     pub index: u32,
     pub factor: u32,
     pub positive: bool
+}
+
+pub enum PropagationResult {
+    Satisfied,
+    Unsatisfied,
+    ImpliedLiteral(Literal),
+    LiteralNotInConstraint
+}
+
+impl PartialOrd for Literal {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Literal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.factor.cmp(&other.factor)
+    }
 }
 
 impl PseudoBooleanFormula {
@@ -28,19 +57,77 @@ impl PseudoBooleanFormula {
                 }
 
             );
-        PseudoBooleanFormula {
-            constraints: equation_list.iter()
-                .map(|e|
-                    Constraint{
-                        degree: e.rhs,
-                        literals: e.lhs.iter()
-                            .map(|s|
-                                Literal{
-                                    index: s.variable_index,
-                                    factor: s.factor as u32,
-                                    positive: s.positive})
-                            .collect()})
-                .collect()
+        let mut pseudo_boolean_formula = PseudoBooleanFormula{
+            constraints: Vec::new(),
+            number_variables: opb_file.max_name_index,
+            constraints_by_variable: Vec::with_capacity(opb_file.max_name_index as usize)
+        };
+
+        for i in 0..opb_file.max_name_index{
+            pseudo_boolean_formula.constraints_by_variable.push(Vec::new());
+        }
+
+        let mut constraint_counter = 0;
+        for equation in equation_list {
+            let mut constraint = Constraint {
+                degree: equation.rhs,
+                sum_true: 0,
+                sum_unassigned: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32,
+                literals: Vec::with_capacity((opb_file.max_name_index - 1) as usize),
+                unassigned_literals: HashSet::new(),
+            };
+            for i in 0..opb_file.max_name_index{
+                constraint.literals.push(None);
+            }
+            for summand in equation.lhs {
+                constraint.literals[summand.variable_index as usize] = Some(Literal{
+                    index: summand.variable_index,
+                    factor: summand.factor as u32,
+                    positive: summand.positive});
+                constraint.unassigned_literals.insert(Literal{
+                    index: summand.variable_index,
+                    factor: summand.factor as u32,
+                    positive: summand.positive});
+                pseudo_boolean_formula.constraints_by_variable.get_mut(summand.variable_index as usize).unwrap().push(constraint_counter);
+            }
+            pseudo_boolean_formula.constraints.push(constraint);
+            constraint_counter += 1;
+        }
+        pseudo_boolean_formula
+    }
+}
+
+impl Constraint {
+    pub fn propagate(&mut self, literal: Literal) -> PropagationResult {
+        let literal_in_constraint = self.literals.get(literal.index as usize).unwrap();
+        match literal_in_constraint {
+            None => {
+                panic!("Propagate must only be called on constraints that actually contain the literal!")
+            },
+            Some(literal_in_constraint) => {
+                if literal_in_constraint.positive == literal.positive {
+                    //literal factor is taken
+                    self.sum_true += literal_in_constraint.factor;
+                    self.sum_unassigned -= literal_in_constraint.factor;
+                    if self.degree <= 0 {
+                        // fulfilled
+                        return Satisfied
+                    }else if self.sum_true + self.sum_unassigned < self.degree as u32 {
+                        // violated
+                        return Unsatisfied
+                    }else if self.sum_true + self.sum_unassigned < (self.degree as u32) + self.unassigned_literals.iter().max().unwrap().factor {
+                        //max literal implied
+                        let max_literal = self.unassigned_literals.iter().max().unwrap();
+                        return ImpliedLiteral(max_literal.clone())
+                    }
+                    unreachable!()
+                }else{
+                    //literal factor is not taken
+                    self.sum_unassigned -= literal_in_constraint.factor;
+                    self.unassigned_literals.retain(|x| x.index != literal.index);
+                    return LiteralNotInConstraint
+                }
+            }
         }
     }
 }
@@ -109,19 +196,26 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        let opb_file = parse("-2 x1 = 7;\n1 x1 <= 1");
+        let opb_file = parse("-2 x1 = 7;\n1 x1 <= 1;\n2 x + 3 x + 1 x >= 3");
         if let Ok(o) = opb_file {
             let formula = PseudoBooleanFormula::new(&o);
-            assert_eq!(formula.constraints.len(), 3);
+            assert_eq!(formula.constraints.len(), 4);
             assert_eq!(formula.constraints.get(0).unwrap().degree, 9);
-            assert_eq!(formula.constraints.get(0).unwrap().literals.get(0).unwrap().factor, 2);
-            assert_eq!(formula.constraints.get(0).unwrap().literals.get(0).unwrap().positive, false);
+            assert_eq!(formula.constraints.get(0).unwrap().literals.get(0).unwrap().as_ref().unwrap().factor, 2);
+            assert_eq!(formula.constraints.get(0).unwrap().literals.get(0).unwrap().as_ref().unwrap().positive, false);
+            assert_eq!(formula.constraints.get(0).unwrap().sum_unassigned, 2);
+            assert_eq!(formula.constraints.get(0).unwrap().sum_true, 0);
             assert_eq!(formula.constraints.get(1).unwrap().degree, -7);
-            assert_eq!(formula.constraints.get(1).unwrap().literals.get(0).unwrap().factor, 2);
-            assert_eq!(formula.constraints.get(1).unwrap().literals.get(0).unwrap().positive, true);
+            assert_eq!(formula.constraints.get(1).unwrap().literals.get(0).unwrap().as_ref().unwrap().factor, 2);
+            assert_eq!(formula.constraints.get(1).unwrap().literals.get(0).unwrap().as_ref().unwrap().positive, true);
+            assert_eq!(formula.constraints.get(1).unwrap().sum_unassigned, 2);
+            assert_eq!(formula.constraints.get(1).unwrap().sum_true, 0);
             assert_eq!(formula.constraints.get(2).unwrap().degree, 0);
-            assert_eq!(formula.constraints.get(2).unwrap().literals.get(0).unwrap().factor, 1);
-            assert_eq!(formula.constraints.get(2).unwrap().literals.get(0).unwrap().positive, false);
+            assert_eq!(formula.constraints.get(2).unwrap().literals.get(0).unwrap().as_ref().unwrap().factor, 1);
+            assert_eq!(formula.constraints.get(2).unwrap().literals.get(0).unwrap().as_ref().unwrap().positive, false);
+            assert_eq!(formula.constraints.get(2).unwrap().sum_unassigned, 1);
+            assert_eq!(formula.constraints.get(2).unwrap().sum_true, 0);
+            assert_eq!(formula.constraints.get(3).unwrap().unassigned_literals.iter().max().unwrap().factor, 3);
         } else {
             assert!(false);
         }
