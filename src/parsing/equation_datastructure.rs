@@ -21,6 +21,7 @@ pub struct Equation {
     pub kind: EquationKind
 }
 
+#[derive(PartialEq, Debug)]
 pub enum EquationKind {
     Eq,
     Ge,
