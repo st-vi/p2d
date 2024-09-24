@@ -15,19 +15,21 @@ impl OPBFile {
         }
     }
 }
+#[derive(Clone)]
 pub struct Equation {
     pub lhs: Vec<Summand>,
     pub rhs: i32,
     pub kind: EquationKind
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum EquationKind {
     Eq,
     Ge,
     Le
 }
 
+#[derive(Clone)]
 pub struct Summand {
     pub variable_index: u32,
     pub factor: i32,

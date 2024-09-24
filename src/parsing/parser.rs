@@ -197,6 +197,5 @@ mod tests {
         } else {
             assert!(false);
         }
-        println!("test");
     }
 }
