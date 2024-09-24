@@ -175,7 +175,28 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        let opb_file = parse("x1 >= 7");
+        let opb_file = parse("x1 + x2 - 3*x3 >= 7");
+        if let Ok(o) = opb_file {
+            assert_eq!(o.equations.len(), 1);
+            let equations = o.equations.get(0).unwrap();
+            assert_eq!(equations.rhs, 7);
+            assert_eq!(equations.kind, EquationKind::Ge);
+            assert_eq!(equations.lhs.len(), 3);
+            let s1_index = o.name_map.get_by_left("x1").unwrap();
+            assert_eq!(equations.lhs.get(0).unwrap().variable_index, *s1_index);
+            assert_eq!(equations.lhs.get(0).unwrap().factor, 1);
+            assert_eq!(equations.lhs.get(0).unwrap().positive, true);
+            let s2_index = o.name_map.get_by_left("x2").unwrap();
+            assert_eq!(equations.lhs.get(1).unwrap().variable_index, *s2_index);
+            assert_eq!(equations.lhs.get(1).unwrap().factor, 1);
+            assert_eq!(equations.lhs.get(1).unwrap().positive, true);
+            let s3_index = o.name_map.get_by_left("x3").unwrap();
+            assert_eq!(equations.lhs.get(2).unwrap().variable_index, *s3_index);
+            assert_eq!(equations.lhs.get(2).unwrap().factor, -3);
+            assert_eq!(equations.lhs.get(2).unwrap().positive, true);
+        } else {
+            assert!(false);
+        }
         println!("test");
     }
 }
