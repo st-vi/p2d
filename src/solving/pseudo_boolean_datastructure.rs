@@ -195,19 +195,19 @@ impl Constraint {
     }
 
     pub fn hash(&self, s: &mut DefaultHasher) -> u64 {
-        self.literals.hash(s);
-        /*
+        //self.literals.hash(s);
+/*
         for item in &self.unassigned_literals {
             item.hash(s);
         }
         for item in &self.assignments {
             item.hash(s);
         }
+*/
 
-         */
-        self.sum_true.hash(s);
-        self.sum_unassigned;
-        self.degree.hash(s);
+        //self.sum_true.hash(s);
+        //self.sum_unassigned.hash(s);
+        //self.degree.hash(s);
         s.finish()
     }
 }

@@ -36,7 +36,9 @@ impl Solver {
             model_counter: 0,
             cache: HashMap::new(),
             statistics: Statistics {
-                cache_hits: 0
+                cache_hits: 0,
+                cache_double_entries: 0,
+                cache_error: 0,
             }
         }
     }
@@ -136,7 +138,7 @@ impl Solver {
                     let last_assignment = self.assignment_stack.last().unwrap();
                     self.propagate(last_assignment.variable_index, last_assignment.variable_sign);
 
-                    /*
+
                     let cached_result = self.get_cached_result();
                     match cached_result {
                         Some(c) => {
@@ -147,8 +149,8 @@ impl Solver {
                         None => return true
                     }
 
-                     */
-                    return true
+
+                    //return true
                 }else if top_element.assignment_kind == SecondDecision {
                     let top_index = top_element.variable_index;
                     let top_sign = top_element.variable_sign;
@@ -220,6 +222,14 @@ impl Solver {
 
     fn cache(&mut self) {
         if self.number_unsat_constraints > 0 {
+            if self.cache.contains_key(&self.hash_state()){
+                self.statistics.cache_double_entries += 1;
+                let (cached_result,_) = self.cache.get(&self.hash_state()).unwrap();
+                let new_result = self.result_stack.last().unwrap();
+                if cached_result != new_result {
+                    self.statistics.cache_error += 1;
+                }
+            }
             self.cache.insert(self.hash_state(), (*self.result_stack.last().unwrap(), self.pseudo_boolean_formula.clone()));
         }
     }
@@ -240,7 +250,9 @@ struct Assignment {
 }
 #[derive(Debug)]
 pub struct Statistics {
-    cache_hits: u32
+    cache_hits: u32,
+    cache_double_entries: u32,
+    cache_error: u32
 }
 
 #[derive(PartialEq)]
