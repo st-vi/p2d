@@ -15,6 +15,7 @@ pub struct Solver {
     unassigned_variables: HashSet<u32>,
     model_counter: u128,
     cache: HashMap<u64,(u128,PseudoBooleanFormula)>,
+    pub statistics: Statistics,
 }
 
 impl Solver {
@@ -33,7 +34,10 @@ impl Solver {
             number_unsat_constraints,
             unassigned_variables,
             model_counter: 0,
-            cache: HashMap::new()
+            cache: HashMap::new(),
+            statistics: Statistics {
+                cache_hits: 0
+            }
         }
     }
 
@@ -51,31 +55,17 @@ impl Solver {
                 }
                 continue
             }
-            let cached_result = self.get_cached_result();
-            match cached_result {
-                None => {
-                    self.decide();
-                    let last_assignment = self.assignment_stack.last().unwrap();
-                    if !self.propagate(last_assignment.variable_index, last_assignment.variable_sign){
-                        //at least one constraint violated
-                        self.result_stack.push(0);
-                        if !self.backtrack(){
-                            //nothing to backtrack to, we searched the whole space
-                            return self.result_stack.pop().unwrap();
-                        }
-                    }
-                },
-                Some(c) => {
-                    self.result_stack.push(c);
-                    self.model_counter += c;
-                    if !self.backtrack(){
-                        //nothing to backtrack to, we searched the whole space
-                        return self.model_counter;
-                    }
-                    continue
+
+            self.decide();
+            let last_assignment = self.assignment_stack.last().unwrap();
+            if !self.propagate(last_assignment.variable_index, last_assignment.variable_sign){
+                //at least one constraint violated
+                self.result_stack.push(0);
+                if !self.backtrack(){
+                    //nothing to backtrack to, we searched the whole space
+                    return self.result_stack.pop().unwrap();
                 }
             }
-
         }
     }
 
@@ -135,23 +125,39 @@ impl Solver {
                     self.undo_assignment(top_element.variable_index, top_element.variable_sign);
                     self.assignment_stack.pop();
                 }else if top_element.assignment_kind == FirstDecision {
-                    self.undo_assignment(top_element.variable_index, top_element.variable_sign);
+                    let top_index = top_element.variable_index;
+                    let top_sign = top_element.variable_sign;
+                    self.cache();
+                    self.undo_assignment(top_index, top_sign);
                     let new_sign = !self.assignment_stack.last().unwrap().variable_sign;
                     self.assignment_stack.last_mut().unwrap().variable_sign = new_sign;
                     self.assignment_stack.last_mut().unwrap().assignment_kind = SecondDecision;
                     self.decision_level = self.assignment_stack.last_mut().unwrap().decision_level;
                     let last_assignment = self.assignment_stack.last().unwrap();
                     self.propagate(last_assignment.variable_index, last_assignment.variable_sign);
-                    return true;
+
+                    /*
+                    let cached_result = self.get_cached_result();
+                    match cached_result {
+                        Some(c) => {
+                            self.result_stack.push(c);
+                            self.statistics.cache_hits += 1;
+                            continue;
+                        },
+                        None => return true
+                    }
+
+                     */
+                    return true
                 }else if top_element.assignment_kind == SecondDecision {
+                    let top_index = top_element.variable_index;
+                    let top_sign = top_element.variable_sign;
+                    self.cache();
                     let r1 = self.result_stack.pop().unwrap();
                     let r2 = self.result_stack.pop().unwrap();
                     self.result_stack.push(r1+r2);
-                    let top_index = top_element.variable_index;
-                    let top_sign = top_element.variable_sign;
                     self.undo_assignment(top_index, top_sign);
                     self.assignment_stack.pop();
-                    self.cache();
                 }
             }else {
                 return false;
@@ -231,6 +237,10 @@ struct Assignment {
     variable_index: u32,
     variable_sign: bool,
     assignment_kind: AssignmentKind
+}
+#[derive(Debug)]
+pub struct Statistics {
+    cache_hits: u32
 }
 
 #[derive(PartialEq)]

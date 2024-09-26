@@ -13,13 +13,13 @@ pub struct PseudoBooleanFormula {
 }
 #[derive(Clone)]
 pub struct Constraint {
-    literals: Vec<Option<Literal>>,
-    unassigned_literals: HashSet<Literal>,
-    degree: i32,
-    sum_true: u32,
-    sum_unassigned: u32,
-    assignments: HashSet<(u32, bool)>,
-    factor_sum: u32,
+    pub literals: Vec<Option<Literal>>,
+    pub unassigned_literals: HashSet<Literal>,
+    pub degree: i32,
+    pub sum_true: u32,
+    pub sum_unassigned: u32,
+    pub assignments: HashSet<(u32, bool)>,
+    pub factor_sum: u32,
     //TODO cashe sum of max literal and update when necessary instead of calculating every time
 }
 
@@ -194,16 +194,20 @@ impl Constraint {
         self.sum_true < self.degree as u32
     }
 
-    pub fn hash(&self, x: &mut DefaultHasher) -> u64 {
-        let mut s = DefaultHasher::new();
-        self.literals.hash(&mut s);
-        for item in &self.assignments {
-            item.hash(&mut s);
-        }
+    pub fn hash(&self, s: &mut DefaultHasher) -> u64 {
+        self.literals.hash(s);
+        /*
         for item in &self.unassigned_literals {
-            item.hash(&mut s);
+            item.hash(s);
         }
-        self.degree.hash(&mut s);
+        for item in &self.assignments {
+            item.hash(s);
+        }
+
+         */
+        self.sum_true.hash(s);
+        self.sum_unassigned;
+        self.degree.hash(s);
         s.finish()
     }
 }
