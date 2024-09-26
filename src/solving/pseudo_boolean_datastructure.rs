@@ -193,22 +193,25 @@ impl Constraint {
     }
 
     pub fn undo(&mut self, variable_index: u32, variable_sign: bool) -> bool {
-        if let Some(literal) = self.literals.get(variable_index as usize).unwrap() {
-            let satisfied_before_undo = self.sum_true >= self.degree as u32;
-            self.unassigned_literals[literal.index as usize] = Some(literal.clone());
-            self.assignments[variable_index as usize] = None;
-            self.sum_unassigned += literal.factor;
-            if literal.positive == variable_sign {
-                if(self.sum_true < literal.factor){
-                    println!("hello");
+        if let Some(a) = self.assignments.get(variable_index as usize).unwrap() {
+            if let Some(literal) = self.literals.get(variable_index as usize).unwrap() {
+                let satisfied_before_undo = self.sum_true >= self.degree as u32;
+                self.unassigned_literals[literal.index as usize] = Some(literal.clone());
+                self.assignments[variable_index as usize] = None;
+                self.sum_unassigned += literal.factor;
+                if literal.positive == variable_sign {
+                    if(self.sum_true < literal.factor){
+                        println!("hello");
+                    }
+                    self.sum_true -= literal.factor;
                 }
-                self.sum_true -= literal.factor;
-            }
-            let satisfied_after_undo = self.sum_true >= self.degree as u32;
-            if satisfied_before_undo && !satisfied_after_undo {
-                return true;
+                let satisfied_after_undo = self.sum_true >= self.degree as u32;
+                if satisfied_before_undo && !satisfied_after_undo {
+                    return true;
+                }
             }
         }
+
         false
     }
 
