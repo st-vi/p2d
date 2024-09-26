@@ -80,7 +80,13 @@ impl Solver {
 
              */
 
-            self.decide();
+            if !self.decide(){
+                self.result_stack.push(0);
+                if !self.backtrack(){
+                    //nothing to backtrack to, we searched the whole space
+                    return self.result_stack.pop().unwrap();
+                }
+            }
             let last_assignment = self.assignment_stack.last().unwrap();
             if !self.propagate(last_assignment.variable_index, last_assignment.variable_sign){
                 //at least one constraint violated
@@ -127,10 +133,13 @@ impl Solver {
         true
     }
 
-    fn decide(&mut self){
+    fn decide(&mut self) -> bool{
         self.decision_level += 1;
         //TODO better heuristic than smallest index?
         //TODO do not take variables from constraints that are already satisfied
+        if self.unassigned_variables.len() == 0 {
+            return false;
+        }
         let variable_index = *self.unassigned_variables.iter().min().unwrap();
         self.unassigned_variables.remove(&variable_index);
         self.assignment_stack.push(Assignment{
@@ -139,6 +148,7 @@ impl Solver {
             decision_level: self.decision_level,
             variable_index
         });
+        true
     }
 
     fn backtrack(&mut self) -> bool {
