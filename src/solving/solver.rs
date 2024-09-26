@@ -1,7 +1,7 @@
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use crate::solving::pseudo_boolean_datastructure::{Constraint, Literal, PseudoBooleanFormula};
+use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::PropagationResult::*;
 use crate::solving::solver::AssignmentKind::{FirstDecision, Propagated, SecondDecision};
 
@@ -14,7 +14,7 @@ pub struct Solver {
     number_unsat_constraints: usize,
     unassigned_variables: HashSet<u32>,
     model_counter: u128,
-    cache: HashMap<u64,(u128,PseudoBooleanFormula)>,
+    cache: HashMap<u64,(u128,PseudoBooleanFormula,HashSet<u32>)>,
     pub statistics: Statistics,
 }
 
@@ -57,6 +57,28 @@ impl Solver {
                 }
                 continue
             }
+            /*
+            else{
+                let cached_result = self.get_cached_result();
+                match cached_result {
+                    Some(c) => {
+                        self.result_stack.push(c);
+                        self.result_stack.push(0);
+                        self.statistics.cache_hits += 1;
+                        if !self.backtrack(){
+                            //nothing to backtrack to, we searched the whole space
+                            return self.result_stack.pop().unwrap();
+                        }
+                        continue;
+                    },
+                    None => {
+
+
+                    }
+                }
+            }
+
+             */
 
             self.decide();
             let last_assignment = self.assignment_stack.last().unwrap();
@@ -108,6 +130,7 @@ impl Solver {
     fn decide(&mut self){
         self.decision_level += 1;
         //TODO better heuristic than smallest index?
+        //TODO do not take variables from constraints that are already satisfied
         let variable_index = *self.unassigned_variables.iter().min().unwrap();
         self.unassigned_variables.remove(&variable_index);
         self.assignment_stack.push(Assignment{
@@ -138,19 +161,28 @@ impl Solver {
                     let last_assignment = self.assignment_stack.last().unwrap();
                     self.propagate(last_assignment.variable_index, last_assignment.variable_sign);
 
+                    /*
+                    if self.number_unsat_constraints > 0 {
+                        let cached_result = self.get_cached_result();
+                        match cached_result {
+                            Some(c) => {
+                                self.result_stack.push(c);
+                                self.statistics.cache_hits += 1;
+                                continue;
+                            },
+                            None => {
 
-                    let cached_result = self.get_cached_result();
-                    match cached_result {
-                        Some(c) => {
-                            self.result_stack.push(c);
-                            self.statistics.cache_hits += 1;
-                            continue;
-                        },
-                        None => return true
+                                return true
+                            }
+                        }
+                    }else{
+                        return true;
                     }
 
+                     */
+                    return true;
 
-                    //return true
+                    return true;
                 }else if top_element.assignment_kind == SecondDecision {
                     let top_index = top_element.variable_index;
                     let top_sign = top_element.variable_sign;
@@ -158,8 +190,10 @@ impl Solver {
                     let r1 = self.result_stack.pop().unwrap();
                     let r2 = self.result_stack.pop().unwrap();
                     self.result_stack.push(r1+r2);
+
                     self.undo_assignment(top_index, top_sign);
                     self.assignment_stack.pop();
+                    //self.cache(self.unassigned_variables.len() as u128);
                 }
             }else {
                 return false;
@@ -210,34 +244,44 @@ impl Solver {
 
     fn hash_state(&self) -> u64 {
         let mut s = DefaultHasher::new();
-
+        let mut is_true = true;
         for c in &self.pseudo_boolean_formula.constraints {
             if c.is_unsatisfied() {
                 c.hash(&mut s);
+                is_true = false;
             }
+        }
+        if is_true {
+            println!("is true");
         }
 
         s.finish()
     }
 
     fn cache(&mut self) {
+        let value = self.unassigned_variables.len();
         if self.number_unsat_constraints > 0 {
-            if self.cache.contains_key(&self.hash_state()){
+            if self.cache.contains_key(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)){
                 self.statistics.cache_double_entries += 1;
-                let (cached_result,_) = self.cache.get(&self.hash_state()).unwrap();
-                let new_result = self.result_stack.last().unwrap();
-                if cached_result != new_result {
+                let (cached_result,cached_state,ua) = self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)).unwrap();
+                let new_result = &value;
+
+                if *cached_result != *new_result as u128 {
+                    let state = self.hash_state();
                     self.statistics.cache_error += 1;
+                    println!("old: {} - new: {} - hash_value: {}", cached_result, new_result, state);
+                    println!("old: {:#?} - {:?}", cached_state.to_string(), ua);
+                    println!("new: {:#?} - {:?}", self.pseudo_boolean_formula.to_string(), self.unassigned_variables);
                 }
             }
-            self.cache.insert(self.hash_state(), (*self.result_stack.last().unwrap(), self.pseudo_boolean_formula.clone()));
+            self.cache.insert(calculate_hash(&self.pseudo_boolean_formula.clone(), self.unassigned_variables.len() as u32), (value as u128, self.pseudo_boolean_formula.clone(), self.unassigned_variables.clone()));
         }
     }
 
     fn get_cached_result(&self) -> Option<u128> {
-        match self.cache.get(&self.hash_state()) {
+        match self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)) {
             None => None,
-            Some((c,_)) => Some(*c)
+            Some((c,_,_)) => Some(*c)
         }
     }
 }
@@ -250,13 +294,13 @@ struct Assignment {
 }
 #[derive(Debug)]
 pub struct Statistics {
-    cache_hits: u32,
-    cache_double_entries: u32,
-    cache_error: u32
+    pub(crate) cache_hits: u32,
+    pub(crate) cache_double_entries: u32,
+    pub(crate) cache_error: u32
 }
 
 #[derive(PartialEq)]
-enum AssignmentKind {
+pub(crate) enum AssignmentKind {
     Propagated,
     FirstDecision,
     SecondDecision
