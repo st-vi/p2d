@@ -93,29 +93,16 @@ impl PseudoBooleanFormula {
                     index: summand.variable_index,
                     factor: summand.factor as u32,
                     positive: summand.positive});
-                constraint.unassigned_literals[summand.variable_index as usize] = (Some(Literal{
+                constraint.unassigned_literals[summand.variable_index as usize] = Some(Literal{
                     index: summand.variable_index,
                     factor: summand.factor as u32,
-                    positive: summand.positive}));
+                    positive: summand.positive});
                 pseudo_boolean_formula.constraints_by_variable.get_mut(summand.variable_index as usize).unwrap().insert(constraint_counter);
             }
             pseudo_boolean_formula.constraints.push(constraint);
             constraint_counter += 1;
         }
         pseudo_boolean_formula
-    }
-
-    pub fn to_string(&self) -> String {
-        let mut string_builder = String::new();
-        string_builder.push('(');
-        for c in &self.constraints {
-            if c.is_unsatisfied() {
-                string_builder.push_str(&*c.to_string());
-                string_builder.push(',')
-            }
-        }
-        string_builder.push_str(")");
-        string_builder
     }
 }
 
@@ -191,14 +178,14 @@ impl Constraint {
     }
 
     pub fn undo(&mut self, variable_index: u32, variable_sign: bool) -> bool {
-        if let Some(a) = self.assignments.get(variable_index as usize).unwrap() {
+        if let Some(_) = self.assignments.get(variable_index as usize).unwrap() {
             if let Some(literal) = self.literals.get(variable_index as usize).unwrap() {
                 let satisfied_before_undo = self.sum_true >= self.degree as u32;
                 self.unassigned_literals[literal.index as usize] = Some(literal.clone());
                 self.assignments[variable_index as usize] = None;
                 self.sum_unassigned += literal.factor;
                 if literal.positive == variable_sign {
-                    if(self.sum_true < literal.factor){
+                    if self.sum_true < literal.factor{
                         println!("hello");
                     }
                     self.sum_true -= literal.factor;
@@ -246,43 +233,6 @@ impl Constraint {
         self.sum_true < self.degree as u32
     }
 
-    /*
-    pub fn hash(&self, s: &mut DefaultHasher) {
-        self.literals.hash(s);
-        self.assignments.hash(s);
-/*
-        for item in &self.unassigned_literals {
-            item.hash(s);
-        }
-        for item in &self.assignments {
-            item.hash(s);
-        }
-*/
-
-        self.sum_true.hash(s);
-        self.sum_unassigned.hash(s);
-        self.degree.hash(s);
-    }
-
-     */
-
-    pub fn to_string(&self) -> String {
-        let mut string_builder = String::new();
-        string_builder.push('(');
-        for l in &self.unassigned_literals {
-            if let Some(literal) = l {
-                if !literal.positive {
-                    string_builder.push('-');
-                }
-                string_builder.push_str(&literal.index.to_string());
-                string_builder.push(',')
-            }
-        }
-        string_builder.push_str(">=");
-        string_builder.push_str(&self.degree.to_string());
-        string_builder.push(')');
-        string_builder
-    }
 }
 
 fn replace_equal_equations(equation: &Equation) -> Vec<Equation> {

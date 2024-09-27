@@ -10,7 +10,7 @@ pub struct Solver {
     assignment_stack: Vec<Assignment>,
     assignments: Vec<Option<(u32, bool)>>,
     decision_level: u32,
-    learned_clauses: Vec<Constraint>,
+    _learned_clauses: Vec<Constraint>,
     result_stack: Vec<u128>,
     number_unsat_constraints: usize,
     //TODO number of unassigned variables should be enough
@@ -32,7 +32,7 @@ impl Solver {
             pseudo_boolean_formula,
             assignment_stack: Vec::new(),
             decision_level: 0,
-            learned_clauses: Vec::new(),
+            _learned_clauses: Vec::new(),
             result_stack: Vec::new(),
             number_unsat_constraints,
             unassigned_variables,
@@ -47,7 +47,7 @@ impl Solver {
             },
             assignments: Vec::new(),
         };
-        for i in 0..number_variables{
+        for _ in 0..number_variables{
             solver.assignments.push(None);
         }
         solver
@@ -71,7 +71,6 @@ impl Solver {
         use std::time::Instant;
         let now = Instant::now();
         let result = self.count();
-        let res = self.count();
         let elapsed = now.elapsed();
         self.statistics.time_to_compute = elapsed.as_millis();
         result
@@ -133,7 +132,7 @@ impl Solver {
         propagation_queue.push_back((variable_index, variable_sign, assignment_kind));
         while !propagation_queue.is_empty() {
             let (index, sign,kind) = propagation_queue.pop_front().unwrap();
-            if let Some((a,s)) = self.assignments.get(index as usize).unwrap() {
+            if let Some((_,s)) = self.assignments.get(index as usize).unwrap() {
                 if s == &sign {
                     //already done exactly this assignment -> skip
                     continue;
@@ -220,21 +219,13 @@ impl Solver {
 
                      */
                     return true;
-
-                    return true;
                 }else if top_element.assignment_kind == SecondDecision {
-                    let top_index = top_element.variable_index;
-                    let top_sign = top_element.variable_sign;
-
                     let r1 = self.result_stack.pop().unwrap();
                     let r2 = self.result_stack.pop().unwrap();
                     self.result_stack.push(r1+r2);
 
-
                     self.undo_last_assignment();
                     self.cache(r1+r2);
-
-                    //self.cache(self.unassigned_variables.len() as u128);
                 }
             }else {
                 return false;
@@ -347,7 +338,6 @@ pub(crate) enum AssignmentKind {
 mod tests {
     use std::fs;
     use crate::parsing;
-    use crate::solving::recursive_solving::RecSolver;
     use super::*;
 
     #[test]

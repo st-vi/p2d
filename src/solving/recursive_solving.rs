@@ -1,7 +1,6 @@
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use pest::pratt_parser::Op;
 use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::PropagationResult::*;
 use crate::solving::recursive_solving::AssignmentKind::{FirstDecision, Propagated, SecondDecision};
@@ -11,12 +10,10 @@ pub struct RecSolver {
     assignment_stack: Vec<Assignment>,
     assignments: Vec<Option<(u32, bool)>>,
     decision_level: u32,
-    learned_clauses: Vec<Constraint>,
-    result_stack: Vec<u128>,
+    _learned_clauses: Vec<Constraint>,
     number_unsat_constraints: usize,
     //TODO number of unassigned variables should be enough
     unassigned_variables: HashSet<u32>,
-    model_counter: u128,
     cache: HashMap<u64,u128>,
     pub statistics: Statistics,
 }
@@ -33,11 +30,9 @@ impl RecSolver {
             pseudo_boolean_formula,
             assignment_stack: Vec::new(),
             decision_level: 0,
-            learned_clauses: Vec::new(),
-            result_stack: Vec::new(),
+            _learned_clauses: Vec::new(),
             number_unsat_constraints,
             unassigned_variables,
-            model_counter: 0,
             cache: HashMap::new(),
             statistics: Statistics {
                 cache_hits: 0,
@@ -48,7 +43,7 @@ impl RecSolver {
             },
             assignments: Vec::new(),
         };
-        for i in 0..number_variables{
+        for _ in 0..number_variables{
             solver.assignments.push(None);
         }
         solver
@@ -92,7 +87,7 @@ impl RecSolver {
                         if self.propagate(variable_index, true, FirstDecision) {
                             c1 = self.count(start_progress,mid_progress);
                         }
-                        if(end_progress - start_progress >= 1){
+                        if end_progress - start_progress >= 1 {
                             println!("{mid_progress} %");
                         }
                         self.undo_until_last_decision();
@@ -146,7 +141,7 @@ impl RecSolver {
         propagation_queue.push_back((variable_index, variable_sign, assignment_kind));
         while !propagation_queue.is_empty() {
             let (index, sign,kind) = propagation_queue.pop_front().unwrap();
-            if let Some((a,s)) = self.assignments.get(index as usize).unwrap() {
+            if let Some((_,s)) = self.assignments.get(index as usize).unwrap() {
                 if s == &sign {
                     //already done exactly this assignment -> skip
                     continue;
