@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::collections::{HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
 use crate::parsing::equation_datastructure::EquationKind::{Eq, Le};
@@ -9,7 +8,7 @@ use crate::solving::pseudo_boolean_datastructure::PropagationResult::{AlreadySat
 pub struct PseudoBooleanFormula {
     pub constraints: Vec<Constraint>,
     pub number_variables: u32,
-    pub constraints_by_variable: Vec<HashSet<usize>>
+    pub constraints_by_variable: Vec<Vec<usize>>
 }
 #[derive(Clone,Debug,Eq, PartialEq)]
 pub struct Constraint {
@@ -69,7 +68,7 @@ impl PseudoBooleanFormula {
         };
 
         for _ in 0..opb_file.max_name_index{
-            pseudo_boolean_formula.constraints_by_variable.push(HashSet::new());
+            pseudo_boolean_formula.constraints_by_variable.push(Vec::new());
         }
 
         let mut constraint_counter = 0;
@@ -97,7 +96,7 @@ impl PseudoBooleanFormula {
                     index: summand.variable_index,
                     factor: summand.factor as u32,
                     positive: summand.positive});
-                pseudo_boolean_formula.constraints_by_variable.get_mut(summand.variable_index as usize).unwrap().insert(constraint_counter);
+                pseudo_boolean_formula.constraints_by_variable.get_mut(summand.variable_index as usize).unwrap().push(constraint_counter);
             }
             pseudo_boolean_formula.constraints.push(constraint);
             constraint_counter += 1;
