@@ -8,13 +8,15 @@ use crate::solving::solver::AssignmentKind::{FirstDecision, Propagated, SecondDe
 pub struct Solver {
     pseudo_boolean_formula: PseudoBooleanFormula,
     assignment_stack: Vec<Assignment>,
+    assignments: Vec<Option<(u32, bool)>>,
     decision_level: u32,
     learned_clauses: Vec<Constraint>,
     result_stack: Vec<u128>,
     number_unsat_constraints: usize,
+    //TODO number of unassigned variables should be enough
     unassigned_variables: HashSet<u32>,
     model_counter: u128,
-    cache: HashMap<u64,(u128,PseudoBooleanFormula,HashSet<u32>)>,
+    cache: HashMap<u64,u128>,
     pub statistics: Statistics,
 }
 
@@ -22,10 +24,11 @@ impl Solver {
     pub fn new(pseudo_boolean_formula: PseudoBooleanFormula) -> Solver {
         let number_unsat_constraints = pseudo_boolean_formula.constraints.len();
         let mut unassigned_variables = HashSet::new();
-        for i in 0..pseudo_boolean_formula.number_variables{
+        let number_variables = pseudo_boolean_formula.number_variables;
+        for i in 0..number_variables{
             unassigned_variables.insert(i);
         }
-        Solver {
+        let mut solver = Solver {
             pseudo_boolean_formula,
             assignment_stack: Vec::new(),
             decision_level: 0,
@@ -39,11 +42,42 @@ impl Solver {
                 cache_hits: 0,
                 cache_double_entries: 0,
                 cache_error: 0,
+                time_to_compute: 0,
+                cache_entries: 0,
+            },
+            assignments: Vec::new(),
+        };
+        for i in 0..number_variables{
+            solver.assignments.push(None);
+        }
+        solver
+    }
+
+    fn get_next_variable(&self) -> Option<u32> {
+        //TODO better heuristic?
+        for constraint in &self.pseudo_boolean_formula.constraints {
+            if constraint.is_unsatisfied(){
+                for literal in &constraint.unassigned_literals {
+                    if let Some(l) = literal {
+                        return Some(l.index);
+                    }
+                }
             }
         }
+        None
     }
 
     pub fn solve(&mut self) -> u128 {
+        use std::time::Instant;
+        let now = Instant::now();
+        let result = self.count();
+        let res = self.count();
+        let elapsed = now.elapsed();
+        self.statistics.time_to_compute = elapsed.as_millis();
+        result
+    }
+
+    fn count(&mut self) -> u128 {
         if !self.simplify(){
             return 0;
         }
@@ -57,54 +91,65 @@ impl Solver {
                 }
                 continue
             }
-            /*
-            else{
-                let cached_result = self.get_cached_result();
-                match cached_result {
-                    Some(c) => {
-                        self.result_stack.push(c);
+
+            //cache start
+            let cached_result = self.get_cached_result();
+            if let Some(c) = cached_result {
+                    self.result_stack.push(c);
+                    self.statistics.cache_hits += 1;
+                    if !self.backtrack(){
+                        //nothing to backtrack to, we searched the whole space
+                        return self.result_stack.pop().unwrap();
+                    }
+                    continue;
+            }
+            //cache end
+
+            let decided_literal = self.decide();
+            match decided_literal {
+                None => {
+                    self.result_stack.push(0);
+                    if !self.backtrack(){
+                        //nothing to backtrack to, we searched the whole space
+                        return self.result_stack.pop().unwrap();
+                    }
+                },
+                Some((var_index, var_sign)) => {
+                    if !self.propagate(var_index, var_sign, FirstDecision){
+                        //at least one constraint violated
                         self.result_stack.push(0);
-                        self.statistics.cache_hits += 1;
                         if !self.backtrack(){
                             //nothing to backtrack to, we searched the whole space
                             return self.result_stack.pop().unwrap();
                         }
-                        continue;
-                    },
-                    None => {
-
-
                     }
-                }
-            }
-
-             */
-
-            if !self.decide(){
-                self.result_stack.push(0);
-                if !self.backtrack(){
-                    //nothing to backtrack to, we searched the whole space
-                    return self.result_stack.pop().unwrap();
-                }
-            }
-            let last_assignment = self.assignment_stack.last().unwrap();
-            if !self.propagate(last_assignment.variable_index, last_assignment.variable_sign){
-                //at least one constraint violated
-                self.result_stack.push(0);
-                if !self.backtrack(){
-                    //nothing to backtrack to, we searched the whole space
-                    return self.result_stack.pop().unwrap();
                 }
             }
         }
     }
 
-    fn propagate(&mut self, variable_index: u32, variable_sign: bool) -> bool {
-        let mut propagation_queue:VecDeque<(u32, bool)> = VecDeque::new();
-        propagation_queue.push_back((variable_index, variable_sign));
+    fn propagate(&mut self, variable_index: u32, variable_sign: bool, assignment_kind: AssignmentKind) -> bool {
+        let mut propagation_queue:VecDeque<(u32, bool, AssignmentKind)> = VecDeque::new();
+        propagation_queue.push_back((variable_index, variable_sign, assignment_kind));
         while !propagation_queue.is_empty() {
-            let (index, sign) = propagation_queue.pop_front().unwrap();
+            let (index, sign,kind) = propagation_queue.pop_front().unwrap();
+            if let Some((a,s)) = self.assignments.get(index as usize).unwrap() {
+                if s == &sign {
+                    //already done exactly this assignment -> skip
+                    continue;
+                }else{
+                    // this is a conflicting assignment
+                    return false;
+                }
+            }
             self.unassigned_variables.remove(&index);
+            self.assignment_stack.push(Assignment{
+                assignment_kind: kind,
+                decision_level: self.decision_level,
+                variable_index: index,
+                variable_sign: sign,
+            });
+            self.assignments[index as usize] = Some((index, sign));
             for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(index as usize).unwrap() {
                 let result = self.pseudo_boolean_formula.constraints.get_mut(*constraint_index).unwrap().propagate(Literal{index, positive: sign, factor: 0});
                 match result {
@@ -116,14 +161,7 @@ impl Solver {
                         return false;
                     },
                     ImpliedLiteral(l) => {
-                        let assignment = Assignment{
-                            variable_sign: l.positive,
-                            variable_index: l.index,
-                            decision_level: self.decision_level,
-                            assignment_kind: Propagated
-                        };
-                        propagation_queue.push_back((l.index, l.positive));
-                        self.assignment_stack.push(assignment);
+                        propagation_queue.push_back((l.index, l.positive, Propagated));
                     },
                     NothingToPropagated => {},
                     AlreadySatisfied => {}
@@ -133,22 +171,16 @@ impl Solver {
         true
     }
 
-    fn decide(&mut self) -> bool{
+    fn decide(&mut self) -> Option<(u32,bool)>{
         self.decision_level += 1;
-        //TODO better heuristic than smallest index?
-        //TODO do not take variables from constraints that are already satisfied
         if self.unassigned_variables.len() == 0 {
-            return false;
+            return None;
         }
-        let variable_index = *self.unassigned_variables.iter().min().unwrap();
-        self.unassigned_variables.remove(&variable_index);
-        self.assignment_stack.push(Assignment{
-            assignment_kind: AssignmentKind::FirstDecision,
-            variable_sign: true,
-            decision_level: self.decision_level,
-            variable_index
-        });
-        true
+        let variable_index = self.get_next_variable();
+        match variable_index {
+            None => None,
+            Some(variable_index) => Some((variable_index, true))
+        }
     }
 
     fn backtrack(&mut self) -> bool {
@@ -157,19 +189,16 @@ impl Solver {
                 if top_element.decision_level == 0{
                     return false;
                 }else if top_element.assignment_kind == Propagated {
-                    self.undo_assignment(top_element.variable_index, top_element.variable_sign);
-                    self.assignment_stack.pop();
+                    self.undo_last_assignment();
                 }else if top_element.assignment_kind == FirstDecision {
-                    let top_index = top_element.variable_index;
-                    let top_sign = top_element.variable_sign;
-                    self.cache();
-                    self.undo_assignment(top_index, top_sign);
-                    let new_sign = !self.assignment_stack.last().unwrap().variable_sign;
-                    self.assignment_stack.last_mut().unwrap().variable_sign = new_sign;
-                    self.assignment_stack.last_mut().unwrap().assignment_kind = SecondDecision;
-                    self.decision_level = self.assignment_stack.last_mut().unwrap().decision_level;
-                    let last_assignment = self.assignment_stack.last().unwrap();
-                    self.propagate(last_assignment.variable_index, last_assignment.variable_sign);
+                    let index = top_element.variable_index;
+                    let sign = top_element.variable_sign;
+                    let decision_level = top_element.decision_level;
+                    //self.cache();
+                    self.undo_last_assignment();
+                    let new_sign = !sign;
+                    self.decision_level = decision_level;
+                    self.propagate(index, new_sign, SecondDecision);
 
                     /*
                     if self.number_unsat_constraints > 0 {
@@ -196,13 +225,15 @@ impl Solver {
                 }else if top_element.assignment_kind == SecondDecision {
                     let top_index = top_element.variable_index;
                     let top_sign = top_element.variable_sign;
-                    self.cache();
+
                     let r1 = self.result_stack.pop().unwrap();
                     let r2 = self.result_stack.pop().unwrap();
                     self.result_stack.push(r1+r2);
 
-                    self.undo_assignment(top_index, top_sign);
-                    self.assignment_stack.pop();
+
+                    self.undo_last_assignment();
+                    self.cache(r1+r2);
+
                     //self.cache(self.unassigned_variables.len() as u128);
                 }
             }else {
@@ -212,11 +243,13 @@ impl Solver {
         }
     }
 
-    fn undo_assignment(&mut self, variable_index: u32, variable_sign: bool) {
-        self.unassigned_variables.insert(variable_index);
-        for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(variable_index as usize).unwrap() {
+    fn undo_last_assignment(&mut self) {
+        let last_assignment = self.assignment_stack.pop().unwrap();
+        self.assignments[last_assignment.variable_index as usize] = None;
+        self.unassigned_variables.insert(last_assignment.variable_index);
+        for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(last_assignment.variable_index as usize).unwrap() {
             let constraint = self.pseudo_boolean_formula.constraints.get_mut(*constraint_index).unwrap();
-            if constraint.undo(variable_index, variable_sign) {
+            if constraint.undo(last_assignment.variable_index, last_assignment.variable_sign) {
                 self.number_unsat_constraints += 1;
             }
         }
@@ -233,19 +266,13 @@ impl Solver {
                     return false;
                 },
                 ImpliedLiteral(l) => {
-                    self.assignment_stack.push(Assignment{
-                        variable_index: l.index,
-                        assignment_kind: Propagated,
-                        decision_level: 0,
-                        variable_sign: l.positive,
-                    });
                     propagation_set.insert((l.index, l.positive));
                 }
                 _ => {}
             }
         }
         for (index, sign) in propagation_set {
-            if !self.propagate(index, sign){
+            if !self.propagate(index, sign, Propagated){
                 return false;
             }
         }
@@ -268,30 +295,28 @@ impl Solver {
         s.finish()
     }
 
-    fn cache(&mut self) {
-        let value = self.unassigned_variables.len();
+    fn cache(&mut self, value: u128) {
         if self.number_unsat_constraints > 0 {
             if self.cache.contains_key(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)){
                 self.statistics.cache_double_entries += 1;
-                let (cached_result,cached_state,ua) = self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)).unwrap();
+                let cached_result = self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)).unwrap();
                 let new_result = &value;
 
                 if *cached_result != *new_result as u128 {
                     let state = self.hash_state();
                     self.statistics.cache_error += 1;
                     println!("old: {} - new: {} - hash_value: {}", cached_result, new_result, state);
-                    println!("old: {:#?} - {:?}", cached_state.to_string(), ua);
-                    println!("new: {:#?} - {:?}", self.pseudo_boolean_formula.to_string(), self.unassigned_variables);
                 }
             }
-            self.cache.insert(calculate_hash(&self.pseudo_boolean_formula.clone(), self.unassigned_variables.len() as u32), (value as u128, self.pseudo_boolean_formula.clone(), self.unassigned_variables.clone()));
+            self.cache.insert(calculate_hash(&self.pseudo_boolean_formula.clone(), self.unassigned_variables.len() as u32), value);
+            self.statistics.cache_entries += 1;
         }
     }
 
     fn get_cached_result(&self) -> Option<u128> {
         match self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)) {
             None => None,
-            Some((c,_,_)) => Some(*c)
+            Some(c) => Some(*c)
         }
     }
 }
@@ -304,9 +329,11 @@ struct Assignment {
 }
 #[derive(Debug)]
 pub struct Statistics {
-    pub(crate) cache_hits: u32,
-    pub(crate) cache_double_entries: u32,
-    pub(crate) cache_error: u32
+    cache_hits: u32,
+    cache_double_entries: u32,
+    cache_error: u32,
+    time_to_compute: u128,
+    cache_entries: usize,
 }
 
 #[derive(PartialEq)]
@@ -318,7 +345,9 @@ pub(crate) enum AssignmentKind {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use crate::parsing;
+    use crate::solving::recursive_solving::RecSolver;
     use super::*;
 
     #[test]
@@ -337,5 +366,15 @@ mod tests {
         let mut solver = Solver::new(formula);
         let model_count = solver.solve();
         assert_eq!(model_count, 17);
+    }
+
+    #[test]
+    fn test_ex_3() {
+        let file_content = fs::read_to_string("./test_models/berkeleydb.opb").expect("cannot read file");
+        let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let model_count = solver.solve();
+        assert_eq!(model_count, 4080389785);
     }
 }
