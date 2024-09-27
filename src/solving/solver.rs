@@ -13,8 +13,7 @@ pub struct Solver {
     _learned_clauses: Vec<Constraint>,
     result_stack: Vec<u128>,
     number_unsat_constraints: usize,
-    //TODO number of unassigned variables should be enough
-    unassigned_variables: HashSet<u32>,
+    number_unassigned_variables: u32,
     model_counter: u128,
     cache: HashMap<u64,u128>,
     pub statistics: Statistics,
@@ -35,7 +34,7 @@ impl Solver {
             _learned_clauses: Vec::new(),
             result_stack: Vec::new(),
             number_unsat_constraints,
-            unassigned_variables,
+            number_unassigned_variables: number_variables,
             model_counter: 0,
             cache: HashMap::new(),
             statistics: Statistics {
@@ -82,8 +81,8 @@ impl Solver {
         }
         loop {
             if self.number_unsat_constraints <= 0 {
-                self.result_stack.push(2_u128.pow(self.unassigned_variables.len() as u32));
-                self.model_counter += 2_u128.pow(self.unassigned_variables.len() as u32);
+                self.result_stack.push(2_u128.pow(self.number_unassigned_variables));
+                self.model_counter += 2_u128.pow(self.number_unassigned_variables);
                 if !self.backtrack(){
                     //nothing to backtrack to, we searched the whole space
                     return self.result_stack.pop().unwrap();
@@ -141,7 +140,7 @@ impl Solver {
                     return false;
                 }
             }
-            self.unassigned_variables.remove(&index);
+            self.number_unassigned_variables -= 1;
             self.assignment_stack.push(Assignment{
                 assignment_kind: kind,
                 decision_level: self.decision_level,
@@ -172,7 +171,7 @@ impl Solver {
 
     fn decide(&mut self) -> Option<(u32,bool)>{
         self.decision_level += 1;
-        if self.unassigned_variables.len() == 0 {
+        if self.number_unassigned_variables == 0 {
             return None;
         }
         let variable_index = self.get_next_variable();
@@ -237,7 +236,7 @@ impl Solver {
     fn undo_last_assignment(&mut self) {
         let last_assignment = self.assignment_stack.pop().unwrap();
         self.assignments[last_assignment.variable_index as usize] = None;
-        self.unassigned_variables.insert(last_assignment.variable_index);
+        self.number_unassigned_variables += 1;
         for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(last_assignment.variable_index as usize).unwrap() {
             let constraint = self.pseudo_boolean_formula.constraints.get_mut(*constraint_index).unwrap();
             if constraint.undo(last_assignment.variable_index, last_assignment.variable_sign) {
@@ -288,9 +287,9 @@ impl Solver {
 
     fn cache(&mut self, value: u128) {
         if self.number_unsat_constraints > 0 {
-            if self.cache.contains_key(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)){
+            if self.cache.contains_key(&calculate_hash(&self.pseudo_boolean_formula, self.number_unassigned_variables)){
                 self.statistics.cache_double_entries += 1;
-                let cached_result = self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)).unwrap();
+                let cached_result = self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.number_unassigned_variables)).unwrap();
                 let new_result = &value;
 
                 if *cached_result != *new_result as u128 {
@@ -299,13 +298,13 @@ impl Solver {
                     println!("old: {} - new: {} - hash_value: {}", cached_result, new_result, state);
                 }
             }
-            self.cache.insert(calculate_hash(&self.pseudo_boolean_formula.clone(), self.unassigned_variables.len() as u32), value);
+            self.cache.insert(calculate_hash(&self.pseudo_boolean_formula.clone(), self.number_unassigned_variables), value);
             self.statistics.cache_entries += 1;
         }
     }
 
     fn get_cached_result(&self) -> Option<u128> {
-        match self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32)) {
+        match self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.number_unassigned_variables)) {
             None => None,
             Some(c) => Some(*c)
         }
