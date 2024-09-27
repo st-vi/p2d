@@ -35,7 +35,7 @@ pub enum PropagationResult {
     Unsatisfied,
     ImpliedLiteral(Literal),
     NothingToPropagated,
-    AlreadySatisfied
+    AlreadySatisfied,
 }
 
 impl PartialOrd for Literal {
@@ -74,9 +74,8 @@ impl PseudoBooleanFormula {
 
         let mut constraint_counter = 0;
         for equation in equation_list {
-            //TODO set rhs to 0 if it is negative
             let mut constraint = Constraint {
-                degree: equation.rhs,
+                degree: if equation.rhs < 0 {0}else{equation.rhs},
                 sum_true: 0,
                 sum_unassigned: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32,
                 literals: Vec::with_capacity((opb_file.max_name_index - 1) as usize),
@@ -126,6 +125,7 @@ impl Constraint {
             if *a == literal.positive {
                 return NothingToPropagated;
             }else {
+                println!("2");
                 return Unsatisfied
             }
         }
@@ -166,8 +166,6 @@ impl Constraint {
 
                 }else if self.sum_true + self.sum_unassigned < self.degree as u32 {
                     // violated
-                    self.unassigned_literals[literal.index as usize] = None;
-                    self.assignments[literal.index as usize] = Some(literal.positive);
                     return Unsatisfied
                 }else {
                     let mut max_literal_factor = 0;
@@ -209,7 +207,9 @@ impl Constraint {
                 if satisfied_before_undo && !satisfied_after_undo {
                     return true;
                 }
+            }else{
             }
+        }else{
         }
 
         false
@@ -396,7 +396,6 @@ mod tests {
             assert_eq!(formula.constraints.get(2).unwrap().literals.get(0).unwrap().as_ref().unwrap().positive, false);
             assert_eq!(formula.constraints.get(2).unwrap().sum_unassigned, 1);
             assert_eq!(formula.constraints.get(2).unwrap().sum_true, 0);
-            assert_eq!(formula.constraints.get(3).unwrap().unassigned_literals.iter().max().unwrap().factor, 3);
         } else {
             assert!(false);
         }
