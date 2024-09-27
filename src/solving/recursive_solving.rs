@@ -1,6 +1,7 @@
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use pest::pratt_parser::Op;
 use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::PropagationResult::*;
 use crate::solving::recursive_solving::AssignmentKind::{FirstDecision, Propagated, SecondDecision};
@@ -13,6 +14,7 @@ pub struct RecSolver {
     learned_clauses: Vec<Constraint>,
     result_stack: Vec<u128>,
     number_unsat_constraints: usize,
+    //TODO number of unassigned variables should be enough
     unassigned_variables: HashSet<u32>,
     model_counter: u128,
     cache: HashMap<u64,u128>,
@@ -41,6 +43,8 @@ impl RecSolver {
                 cache_hits: 0,
                 cache_double_entries: 0,
                 cache_error: 0,
+                time_to_compute: 0,
+                cache_entries: 0,
             },
             assignments: Vec::new(),
         };
@@ -50,7 +54,20 @@ impl RecSolver {
         solver
     }
 
-    fn count(&mut self) -> u128 {
+    fn get_next_variable(&self) -> Option<u32> {
+        for constraint in &self.pseudo_boolean_formula.constraints {
+            if constraint.is_unsatisfied(){
+                for literal in &constraint.unassigned_literals {
+                    if let Some(l) = literal {
+                        return Some(l.index);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn count(&mut self, start_progress: u32, end_progress: u32) -> u128 {
         let cache_entry = self.get_cached_result();
         match cache_entry {
             Some(c) => {
@@ -65,20 +82,32 @@ impl RecSolver {
                 if self.unassigned_variables.len() == 0 {
                     return 0;
                 }
-                let variable_index = *self.unassigned_variables.iter().min().unwrap();
-                let mut c1 = 0;
-                if self.propagate(variable_index, true, FirstDecision) {
-                    c1 = self.count();
+                let mid_progress = start_progress + (end_progress - start_progress) / 2;
+
+                let variable_index = self.get_next_variable();
+                match variable_index {
+                    None => {return 0;}
+                    Some(variable_index) => {
+                        let mut c1 = 0;
+                        if self.propagate(variable_index, true, FirstDecision) {
+                            c1 = self.count(start_progress,mid_progress);
+                        }
+                        if(end_progress - start_progress >= 1){
+                            println!("{mid_progress} %");
+                        }
+                        self.undo_until_last_decision();
+                        let mut c2 = 0;
+                        if self.propagate(variable_index, false,SecondDecision) {
+                            c2 = self.count(mid_progress, end_progress);
+                        }
+
+                        self.undo_until_last_decision();
+                        self.decision_level -= 1;
+                        self.cache(c1 + c2);
+                        c1 + c2
+                    }
                 }
-                self.undo_until_last_decision();
-                let mut c2 = 0;
-                if self.propagate(variable_index, false,SecondDecision) {
-                    c2 = self.count();
-                }
-                self.undo_until_last_decision();
-                self.decision_level -= 1;
-                self.cache(c1 + c2);
-                c1 + c2
+
             }
         }
     }
@@ -101,10 +130,15 @@ impl RecSolver {
     }
 
     pub fn solve(&mut self) -> u128 {
+        use std::time::Instant;
+        let now = Instant::now();
         if !self.simplify(){
             return 0;
         }
-        self.count()
+        let res = self.count(0, 100);
+        let elapsed = now.elapsed();
+        self.statistics.time_to_compute = elapsed.as_millis();
+        res
     }
 
     fn propagate(&mut self, variable_index: u32, variable_sign: bool, assignment_kind: AssignmentKind) -> bool {
@@ -223,6 +257,7 @@ impl RecSolver {
                 }
             }
             self.cache.insert(calculate_hash(&self.pseudo_boolean_formula, self.unassigned_variables.len() as u32), value);
+            self.statistics.cache_entries += 1;
         }
     }
 
@@ -244,7 +279,9 @@ struct Assignment {
 pub struct Statistics {
     cache_hits: u32,
     cache_double_entries: u32,
-    cache_error: u32
+    cache_error: u32,
+    time_to_compute: u128,
+    cache_entries: u64
 }
 
 #[derive(PartialEq)]
@@ -256,6 +293,7 @@ enum AssignmentKind {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use crate::parsing;
     use super::*;
 
@@ -275,5 +313,15 @@ mod tests {
         let mut solver = RecSolver::new(formula);
         let model_count = solver.solve();
         assert_eq!(model_count, 17);
+    }
+
+    #[test]
+    fn test_ex_3() {
+        let file_content = fs::read_to_string("./test_models/berkeleydb.opb").expect("cannot read file");
+        let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = RecSolver::new(formula);
+        let model_count = solver.solve();
+        assert_eq!(model_count, 4080389785);
     }
 }
