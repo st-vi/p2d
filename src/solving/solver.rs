@@ -1,6 +1,5 @@
 use std::cmp::PartialEq;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::collections::{HashMap, VecDeque};
 use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::PropagationResult::*;
 use crate::solving::solver::AssignmentKind::{FirstDecision, Propagated, SecondDecision};
@@ -22,11 +21,7 @@ pub struct Solver {
 impl Solver {
     pub fn new(pseudo_boolean_formula: PseudoBooleanFormula) -> Solver {
         let number_unsat_constraints = pseudo_boolean_formula.constraints.len();
-        let mut unassigned_variables = HashSet::new();
         let number_variables = pseudo_boolean_formula.number_variables;
-        for i in 0..number_variables{
-            unassigned_variables.insert(i);
-        }
         let mut solver = Solver {
             pseudo_boolean_formula,
             assignment_stack: Vec::new(),
@@ -198,25 +193,6 @@ impl Solver {
                     self.decision_level = decision_level;
                     self.propagate(index, new_sign, SecondDecision);
 
-                    /*
-                    if self.number_unsat_constraints > 0 {
-                        let cached_result = self.get_cached_result();
-                        match cached_result {
-                            Some(c) => {
-                                self.result_stack.push(c);
-                                self.statistics.cache_hits += 1;
-                                continue;
-                            },
-                            None => {
-
-                                return true
-                            }
-                        }
-                    }else{
-                        return true;
-                    }
-
-                     */
                     return true;
                 }else if top_element.assignment_kind == SecondDecision {
                     let r1 = self.result_stack.pop().unwrap();
@@ -246,7 +222,7 @@ impl Solver {
     }
 
     fn simplify(&mut self) -> bool {
-        let mut propagation_set = HashSet::new();
+        let mut propagation_set = Vec::new();
         for constraint in &mut self.pseudo_boolean_formula.constraints {
             match constraint.simplify(){
                 Satisfied => {
@@ -256,7 +232,7 @@ impl Solver {
                     return false;
                 },
                 ImpliedLiteral(l) => {
-                    propagation_set.insert((l.index, l.positive));
+                    propagation_set.push((l.index, l.positive));
                 }
                 _ => {}
             }
@@ -269,33 +245,14 @@ impl Solver {
         true
     }
 
-    fn hash_state(&self) -> u64 {
-        let mut s = DefaultHasher::new();
-        let mut is_true = true;
-        for c in &self.pseudo_boolean_formula.constraints {
-            if c.is_unsatisfied() {
-                c.hash(&mut s);
-                is_true = false;
-            }
-        }
-        if is_true {
-            println!("is true");
-        }
-
-        s.finish()
-    }
-
     fn cache(&mut self, value: u128) {
         if self.number_unsat_constraints > 0 {
             if self.cache.contains_key(&calculate_hash(&self.pseudo_boolean_formula, self.number_unassigned_variables)){
                 self.statistics.cache_double_entries += 1;
                 let cached_result = self.cache.get(&calculate_hash(&self.pseudo_boolean_formula, self.number_unassigned_variables)).unwrap();
                 let new_result = &value;
-
                 if *cached_result != *new_result as u128 {
-                    let state = self.hash_state();
                     self.statistics.cache_error += 1;
-                    println!("old: {} - new: {} - hash_value: {}", cached_result, new_result, state);
                 }
             }
             self.cache.insert(calculate_hash(&self.pseudo_boolean_formula.clone(), self.number_unassigned_variables), value);
