@@ -13,7 +13,6 @@ pub struct Solver {
     result_stack: Vec<u128>,
     number_unsat_constraints: usize,
     number_unassigned_variables: u32,
-    model_counter: u128,
     cache: HashMap<u64,u128>,
     pub statistics: Statistics,
 }
@@ -30,7 +29,6 @@ impl Solver {
             result_stack: Vec::new(),
             number_unsat_constraints,
             number_unassigned_variables: number_variables,
-            model_counter: 0,
             cache: HashMap::new(),
             statistics: Statistics {
                 cache_hits: 0,
@@ -72,12 +70,13 @@ impl Solver {
 
     fn count(&mut self) -> u128 {
         if !self.simplify(){
+            //after simplifying formula violated constraint detected
             return 0;
         }
         loop {
             if self.number_unsat_constraints <= 0 {
+                //current assignment satisfies all constraints
                 self.result_stack.push(2_u128.pow(self.number_unassigned_variables));
-                self.model_counter += 2_u128.pow(self.number_unassigned_variables);
                 if !self.backtrack(){
                     //nothing to backtrack to, we searched the whole space
                     return self.result_stack.pop().unwrap();
@@ -85,7 +84,7 @@ impl Solver {
                 continue
             }
 
-            //cache start
+            //cache start: check cache for matching entry
             let cached_result = self.get_cached_result();
             if let Some(c) = cached_result {
                     self.result_stack.push(c);
@@ -101,6 +100,7 @@ impl Solver {
             let decided_literal = self.decide();
             match decided_literal {
                 None => {
+                    //there are no free variables to assign a value to
                     self.result_stack.push(0);
                     if !self.backtrack(){
                         //nothing to backtrack to, we searched the whole space
@@ -108,6 +108,7 @@ impl Solver {
                     }
                 },
                 Some((var_index, var_sign)) => {
+                    //set and propagate the new decided variable
                     if !self.propagate(var_index, var_sign, FirstDecision){
                         //at least one constraint violated
                         self.result_stack.push(0);
@@ -121,6 +122,18 @@ impl Solver {
         }
     }
 
+    /// This function is used to set a variable to true or false in all constraints.
+    /// It also detects implied variables and also sets them until no more implications are left.
+    /// It adapts all constraints, the assignment_stack and the number of unsatisfied constraints
+    /// accordingly. This means all relevant datastructures for setting a variable assignment
+    /// are handled by this function.
+    /// # Arguments
+    /// * `variable_index` - The index of the variable to be set to true or false
+    /// * `variable_sign` - true or false depending on what the variable is set to
+    /// * `assignment_kind` - depending on how the decision for this assigment was made
+    /// # Returns
+    /// true: the variable assignment and all implications are set and no constraints were violated
+    /// false: the assignment resulted in conflicting implications
     fn propagate(&mut self, variable_index: u32, variable_sign: bool, assignment_kind: AssignmentKind) -> bool {
         let mut propagation_queue:VecDeque<(u32, bool, AssignmentKind)> = VecDeque::new();
         propagation_queue.push_back((variable_index, variable_sign, assignment_kind));
@@ -176,6 +189,14 @@ impl Solver {
         }
     }
 
+    /// This functions backtracks manually by chancing the necessary data structures.
+    /// Backtracking means: undoing all assignments until the last decision. If the decision was a first
+    /// decision, change the sign of the variable, if not also undo it and backtrack further.
+    /// The function also collects the results and caches them.
+    /// # Returns
+    /// true: the function successfully backtracked to a not violated and not yet visited state
+    /// false: during backtracking the function got back to the first decision and discovered, that
+    /// the whole search space has been searched
     fn backtrack(&mut self) -> bool {
         loop {
             if let Some(top_element) = self.assignment_stack.last(){
@@ -187,7 +208,6 @@ impl Solver {
                     let index = top_element.variable_index;
                     let sign = top_element.variable_sign;
                     let decision_level = top_element.decision_level;
-                    //self.cache();
                     self.undo_last_assignment();
                     let new_sign = !sign;
                     self.decision_level = decision_level;
@@ -209,6 +229,7 @@ impl Solver {
         }
     }
 
+    /// Undos the last assignment. Just one assignment independent of the decision kind.
     fn undo_last_assignment(&mut self) {
         let last_assignment = self.assignment_stack.pop().unwrap();
         self.assignments[last_assignment.variable_index as usize] = None;
@@ -221,6 +242,10 @@ impl Solver {
         }
     }
 
+    /// Checks if there are any implications and if so propagates them until there are no more implications
+    /// # Returns
+    /// true: all implications were assigned without any conflicts
+    /// false: a conflict occurred and the formula is therefore unsatisfiable
     fn simplify(&mut self) -> bool {
         let mut propagation_set = Vec::new();
         for constraint in &mut self.pseudo_boolean_formula.constraints {

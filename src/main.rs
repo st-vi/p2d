@@ -15,7 +15,7 @@ mod solving {
 }
 
 fn main() {
-    run_rec();
+    //run_rec();
     run_not_rec();
 }
 
