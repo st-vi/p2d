@@ -1,4 +1,3 @@
-use std::arch::x86_64::_mm_undefined_si128;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::solving::disconnected_component_datastructure::{Component, ComponentBasedFormula};
@@ -550,5 +549,16 @@ mod tests {
         let model_count = solver.solve();
         println!("{:#?}", solver.statistics);
         assert_eq!(model_count, 175);
+    }
+
+    #[test]
+    fn test_ex_5() {
+        let file_content = fs::read_to_string("./test_models/financialservices01.opb").expect("cannot read file");
+        let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let model_count = solver.solve();
+        println!("{:#?}", solver.statistics);
+        assert_eq!(model_count, 97451212554676);
     }
 }

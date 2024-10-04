@@ -1,6 +1,5 @@
 use std::fs;
 use crate::solving::pseudo_boolean_datastructure::PseudoBooleanFormula;
-use crate::solving::solver::AssignmentKind::FirstDecision;
 use crate::solving::solver::Solver;
 
 mod parsing {
@@ -16,17 +15,6 @@ mod solving {
 
 fn main() {
     run_not_rec();
-    test();
-}
-
-fn test() {
-    let opb_file = parsing::parser::parse("a + b + c >= 1;\nx + y + z >= 2;\na + x >= 1;\nx1 + x2 + x3 >= 1;\n").expect("error while parsing");
-    let formula = PseudoBooleanFormula::new(&opb_file);
-    let mut solver = Solver::new(formula);
-    solver.propagate(3,true,FirstDecision);
-    //let component_based_formula = solver.to_disconnected_components(solver);
-    //println!("{:#?}", component_based_formula);
-
 }
 
 fn run_not_rec(){
