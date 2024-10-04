@@ -18,6 +18,7 @@ pub struct Solver {
     cache: HashMap<u64,u128>,
     pub statistics: Statistics,
     variable_in_scope: Vec<bool>,
+    progress: HashMap<u32, u32>,
 }
 
 impl Solver {
@@ -127,7 +128,7 @@ impl Solver {
             result_stack: Vec::new(),
             number_unsat_constraints,
             number_unassigned_variables: number_variables,
-            cache: HashMap::with_capacity(100_000_000),
+            cache: HashMap::with_capacity(100),
             statistics: Statistics {
                 cache_hits: 0,
                 cache_double_entries: 0,
@@ -139,6 +140,7 @@ impl Solver {
             },
             assignments: Vec::new(),
             variable_in_scope: Vec::new(),
+            progress: HashMap::new(),
         };
         for _ in 0..number_variables{
             solver.assignments.push(None);
@@ -149,6 +151,44 @@ impl Solver {
 
     fn get_next_variable(&self) -> Option<u32> {
         //TODO better heuristic?
+/*
+        let mut min_number_unsat_constraint = self.number_unsat_constraints;
+        let mut index = None;
+
+        for (i, a) in self.assignments.iter().enumerate() {
+            if a.is_none() {
+                let tmp_dis = self.to_disconnected_components();
+                if let Some(d) = tmp_dis {
+                    let m = d.components.iter().map(|x| x.number_unsat_constraints).max().unwrap();
+                    if m < min_number_unsat_constraint as u32 {
+                        min_number_unsat_constraint = m as usize;
+                        index = Some(i as u32);
+                    }
+                }
+            }
+        }
+
+        if index.is_none() {
+            for constraint in &self.pseudo_boolean_formula.constraints {
+                if constraint.is_unsatisfied(){
+                    for literal in &constraint.unassigned_literals {
+                        if let Some(l) = literal {
+                            if *self.variable_in_scope.get(l.index as usize).unwrap() {
+                                return Some(l.index);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }else{
+            index
+        }
+
+
+ */
+
+
         for constraint in &self.pseudo_boolean_formula.constraints {
             if constraint.is_unsatisfied(){
                 for literal in &constraint.unassigned_literals {
@@ -161,6 +201,45 @@ impl Solver {
             }
         }
         None
+
+
+
+/*
+
+        let mut counter: HashMap<usize,u64> = HashMap::new();
+        for (variable_index, taken) in self.variable_in_scope.iter().enumerate() {
+            if *taken && self.assignments.get(variable_index).unwrap().is_none() {
+                let tmp_res = counter.get(&variable_index);
+                match tmp_res {
+                    None => {
+                        counter.insert(variable_index, 1);
+                    },
+                    Some(v) => {
+                        counter.insert(variable_index, v + 1);
+                    }
+                }
+
+            }
+        }
+        if counter.len() > 0 {
+            let mut max_index: usize = 0;
+            let mut max_value: u64 = 0;
+            for (k,v) in counter.iter() {
+                if v > &max_value {
+                    max_value = *v;
+                    max_index = *k;
+                }
+            }
+            Some(max_index as u32)
+        }else{
+            None
+        }
+
+
+ */
+
+
+
     }
 
     pub fn solve(&mut self) -> u128 {
@@ -358,6 +437,33 @@ impl Solver {
                             let index = last_assignment.variable_index;
                             let sign = last_assignment.variable_sign;
                             let decision_level = last_assignment.decision_level;
+
+                            //show progress
+                            if decision_level < 8 {
+                                let res = self.progress.get(&decision_level);
+                                match res {
+                                    None => {
+                                        self.progress.insert(decision_level, 1);
+                                    },
+                                    Some(v) => {
+                                        self.progress.insert(decision_level, *v + 1);
+                                    }
+                                }
+                                for i in decision_level + 1..8{
+                                    self.progress.remove(&i);
+                                }
+                            }
+                            let mut progress = 0.0;
+                            for (k,v) in &self.progress {
+                                progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
+                            }
+                            if progress == 50.0 {
+                                println!("test");
+                            }
+                            println!("{progress} %");
+                            //end sho progress
+
+
                             self.undo_last_assignment();
                             let new_sign = !sign;
                             self.decision_level = decision_level;
@@ -465,7 +571,7 @@ impl Solver {
                     self.statistics.cache_error += 1;
                 }
             }
-            self.cache.insert(calculate_hash(&self.pseudo_boolean_formula.clone(), self.number_unassigned_variables, &self.variable_in_scope), value);
+            self.cache.insert(calculate_hash(&self.pseudo_boolean_formula, self.number_unassigned_variables, &self.variable_in_scope), value);
             self.statistics.cache_entries += 1;
         }
     }
