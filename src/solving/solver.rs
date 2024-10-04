@@ -438,6 +438,7 @@ impl Solver {
                             let sign = last_assignment.variable_sign;
                             let decision_level = last_assignment.decision_level;
 
+                            /*
                             //show progress
                             if decision_level < 8 {
                                 let res = self.progress.get(&decision_level);
@@ -457,11 +458,10 @@ impl Solver {
                             for (k,v) in &self.progress {
                                 progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
                             }
-                            if progress == 50.0 {
-                                println!("test");
-                            }
                             println!("{progress} %");
                             //end sho progress
+
+                             */
 
 
                             self.undo_last_assignment();
@@ -490,6 +490,9 @@ impl Solver {
                             for _ in 0..last_branch.components.len(){
                                 branch_result = branch_result * self.result_stack.pop().unwrap();
                             }
+                            if branch_result == 0 {
+                                println!("0");
+                            }
                             self.result_stack.push(branch_result);
                             self.number_unassigned_variables = last_branch.previous_number_unassigned_variables as u32;
                             self.number_unsat_constraints = last_branch.previous_number_unsat_constraints;
@@ -500,6 +503,18 @@ impl Solver {
                             // process next component
                             //TODO if one component result is zero backtrack beyond branch
                             if let ComponentBranch(mut last_branch) = self.assignment_stack.pop().unwrap() {
+                                if *self.result_stack.last().unwrap() == 0 {
+                                    for _ in 0..=last_branch.current_component {
+                                        self.result_stack.pop();
+                                    }
+                                    self.result_stack.push(0);
+                                    self.number_unassigned_variables = last_branch.previous_number_unassigned_variables as u32;
+                                    self.number_unsat_constraints = last_branch.previous_number_unsat_constraints;
+                                    self.variable_in_scope = last_branch.previous_variables_in_scope.clone();
+                                    self.assignment_stack.pop();
+                                    println!("test");
+                                    continue;
+                                }
                                 last_branch.current_component += 1;
                                 self.number_unassigned_variables = last_branch.components.get(last_branch.current_component).unwrap().number_unassigned_variables;
                                 self.number_unsat_constraints = last_branch.components.get(last_branch.current_component).unwrap().number_unsat_constraints as usize;

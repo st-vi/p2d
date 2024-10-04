@@ -315,11 +315,11 @@ pub fn calculate_hash(t: &PseudoBooleanFormula, n: u32, variables_in_scope: &Vec
 impl Hash for Constraint {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.literals.hash(state);
-        self.assignments.hash(state);
+        //self.assignments.hash(state);
         self.sum_true.hash(state);
         self.sum_unassigned.hash(state);
         self.degree.hash(state);
-        self.unassigned_literals.hash(state);
+        //self.unassigned_literals.hash(state);
     }
 }
 
