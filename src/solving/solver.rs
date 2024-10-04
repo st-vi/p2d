@@ -23,7 +23,7 @@ pub struct Solver {
 
 impl Solver {
 
-    fn create_adjacency_matrix_for_connected_components(&self, variables_in_scope: &Vec<bool>) -> Vec<Vec<bool>> {
+    fn create_adjacency_matrix_for_connected_components(&self) -> Vec<Vec<bool>> {
         // create adjacency matrix connection graph
         let mut matrix = Vec::new();
         for (i, constraint_list) in self.pseudo_boolean_formula.constraints_by_variable.iter().enumerate() {
@@ -31,7 +31,7 @@ impl Solver {
             for _ in 0..self.pseudo_boolean_formula.number_variables {
                 vector.push(false);
             }
-            if *variables_in_scope.get(i).unwrap() && self.assignments.get(i as usize).unwrap().is_none() {
+            if *self.variable_in_scope.get(i).unwrap() && self.assignments.get(i as usize).unwrap().is_none() {
                 for constraint_index in constraint_list {
                     let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
                     for variable in &constraint.literals {
@@ -47,9 +47,9 @@ impl Solver {
         }
         matrix
     }
-    pub fn to_disconnected_components(&self, variables_in_scope: &Vec<bool>) -> Option<ComponentBasedFormula> {
+    pub fn to_disconnected_components(&self) -> Option<ComponentBasedFormula> {
         let mut components = Vec::new();
-        let matrix = self.create_adjacency_matrix_for_connected_components(variables_in_scope);
+        let matrix = self.create_adjacency_matrix_for_connected_components();
         let mut already_visited: HashSet<usize> = HashSet::new();
         for i in 0..self.pseudo_boolean_formula.number_variables {
             let mut component = Vec::new();
@@ -96,6 +96,7 @@ impl Solver {
                     }
                 }
             }
+
             component_based_formula.components.push(component);
         }
 
@@ -127,7 +128,7 @@ impl Solver {
             result_stack: Vec::new(),
             number_unsat_constraints,
             number_unassigned_variables: number_variables,
-            cache: HashMap::new(),
+            cache: HashMap::with_capacity(100_000_000),
             statistics: Statistics {
                 cache_hits: 0,
                 cache_double_entries: 0,
@@ -188,7 +189,7 @@ impl Solver {
                 continue
             }
 
-/*
+
             //cache start: check cache for matching entry
             let cached_result = self.get_cached_result();
             if let Some(c) = cached_result {
@@ -202,7 +203,7 @@ impl Solver {
             }
             //cache end
 
- */
+
 
 
 
@@ -308,7 +309,7 @@ impl Solver {
     }
 
     fn branch_components(&mut self) -> bool {
-        let result = self.to_disconnected_components(&self.variable_in_scope);
+        let result = self.to_disconnected_components();
         match result {
             Some(component_based_formula) => {
                 self.number_unsat_constraints = component_based_formula.components.get(0).unwrap().number_unsat_constraints as usize;
@@ -361,9 +362,12 @@ impl Solver {
                             self.undo_last_assignment();
                             let new_sign = !sign;
                             self.decision_level = decision_level;
-                            self.propagate(index, new_sign, SecondDecision);
-
-                            return true;
+                            if self.propagate(index, new_sign, SecondDecision) {
+                                return true;
+                            }else{
+                                self.result_stack.push(0);
+                                self.undo_last_assignment();
+                            }
                         }else if last_assignment.assignment_kind == SecondDecision {
                             let r1 = self.result_stack.pop().unwrap();
                             let r2 = self.result_stack.pop().unwrap();
