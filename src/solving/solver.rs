@@ -1,5 +1,5 @@
 use std::cmp::PartialEq;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use crate::solving::disconnected_component_datastructure::{Component, ComponentBasedFormula};
 use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::PropagationResult::*;
@@ -17,33 +17,34 @@ pub struct Solver {
     number_unassigned_variables: u32,
     cache: HashMap<u64,u128>,
     pub statistics: Statistics,
-    variable_in_scope: Vec<bool>,
+    variable_in_scope: BTreeSet<usize>,
     progress: HashMap<u32, u32>,
     last_progress: f32
 }
 
 impl Solver {
 
-    fn create_adjacency_matrix_for_connected_components(&self) -> Vec<Vec<bool>> {
+    fn create_adjacency_matrix_for_connected_components(&self) -> BTreeMap<usize,BTreeSet<usize>> {
         // create adjacency matrix connection graph
-        let mut matrix = Vec::new();
+        let mut matrix = BTreeMap::new();
         for (i, constraint_list) in self.pseudo_boolean_formula.constraints_by_variable.iter().enumerate() {
-            let mut vector = Vec::with_capacity(self.pseudo_boolean_formula.number_variables as usize);
-            vector.extend((0..self.pseudo_boolean_formula.number_variables).map(|_| false));
+            let mut vector = BTreeSet::new();
 
-            if *self.variable_in_scope.get(i).unwrap() && self.assignments.get(i as usize).unwrap().is_none() {
+            if self.variable_in_scope.contains(&i) && self.assignments.get(i as usize).unwrap().is_none() {
                 for constraint_index in constraint_list {
                     let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
                     for variable in &constraint.literals {
                         if let Some(v) = variable {
                             if self.assignments.get(v.index as usize).unwrap().is_none(){
-                                vector[v.index as usize] = true;
+                                vector.insert(v.index as usize);
                             }
                         }
                     }
                 }
             }
-            matrix.push(vector);
+            if vector.len() > 0 {
+                matrix.insert(i, vector);
+            }
         }
         matrix
     }
@@ -52,10 +53,9 @@ impl Solver {
         let matrix = self.create_adjacency_matrix_for_connected_components();
         let mut already_visited: HashSet<usize> = HashSet::new();
         for i in 0..self.pseudo_boolean_formula.number_variables {
-            let mut component = Vec::with_capacity(self.pseudo_boolean_formula.number_variables as usize);
-            component.extend((0..self.pseudo_boolean_formula.number_variables).map(|_| false));
+            let mut component = BTreeSet::new();
 
-            if *self.variable_in_scope.get(i as usize).unwrap() && self.assignments.get(i as usize).unwrap().is_none() && self.add_connected_constraints(&matrix, &mut component, i as usize, &mut already_visited) {
+            if self.variable_in_scope.contains(&(i as usize)) && self.assignments.get(i as usize).unwrap().is_none() && self.add_connected_constraints(&matrix, &mut component, i as usize, &mut already_visited) {
                 components.push(component);
             }
         }
@@ -67,26 +67,19 @@ impl Solver {
         for c in &components {
             let mut component = Component{
                 variables: c.clone(),
-                number_unassigned_variables: 0,
+                number_unassigned_variables: c.len() as u32,
                 number_unsat_constraints: 0,
             };
             let mut constraints = Vec::with_capacity(self.pseudo_boolean_formula.constraints.len());
             constraints.extend((0..self.pseudo_boolean_formula.constraints.len()).map(|_| false));
 
-            for (i,v) in c.iter().enumerate() {
-                if *v {
-                    let constraint_indexes = self.pseudo_boolean_formula.constraints_by_variable.get(i).unwrap();
-                    for constraint_index in constraint_indexes{
-                        constraints[*constraint_index] = true;
-                    }
-
-                }
-            }
             for i in c {
-                if *i {
-                    component.number_unassigned_variables += 1;
+                let constraint_indexes = self.pseudo_boolean_formula.constraints_by_variable.get(*i).unwrap();
+                for constraint_index in constraint_indexes{
+                    constraints[*constraint_index] = true;
                 }
             }
+
             for (i,v) in constraints.iter().enumerate() {
                 if *v {
                     if self.pseudo_boolean_formula.constraints.get(i).unwrap().is_unsatisfied() {
@@ -101,15 +94,15 @@ impl Solver {
         Some(component_based_formula)
     }
 
-    fn add_connected_constraints(&self, matrix: &Vec<Vec<bool>>, component: &mut Vec<bool>, variable_index: usize, visited: &mut HashSet<usize>) -> bool {
+    fn add_connected_constraints(&self, matrix: &BTreeMap<usize,BTreeSet<usize>>, component: &mut BTreeSet<usize>, variable_index: usize, visited: &mut HashSet<usize>) -> bool {
         if visited.contains(&variable_index) {
             return false
         }
         visited.insert(variable_index);
-        for (index, item) in matrix.get(variable_index).unwrap().iter().enumerate() {
-            if *item {
-                component[index] = true;
-                self.add_connected_constraints(matrix, component, index, visited);
+        if let Some(vector) = matrix.get(&variable_index) {
+            for index in vector {
+                component.insert(*index);
+                self.add_connected_constraints(matrix, component, *index, visited);
             }
         }
         true
@@ -135,13 +128,13 @@ impl Solver {
                 cache_entries: 0,
             },
             assignments: Vec::new(),
-            variable_in_scope: Vec::new(),
+            variable_in_scope: BTreeSet::new(),
             progress: HashMap::new(),
             last_progress: -1.0,
         };
-        for _ in 0..number_variables{
+        for i in 0..number_variables{
             solver.assignments.push(None);
-            solver.variable_in_scope.push(true);
+            solver.variable_in_scope.insert(i as usize);
         }
         solver
     }
@@ -216,7 +209,7 @@ impl Solver {
         for constraint in &self.pseudo_boolean_formula.constraints {
             if constraint.is_unsatisfied(){
                 for (_,literal) in &constraint.unassigned_literals {
-                    if *self.variable_in_scope.get(literal.index as usize).unwrap() {
+                    if self.variable_in_scope.contains(&(literal.index as usize)) {
                         let tmp_res = counter.get(literal.index as usize).unwrap();
                         counter[literal.index as usize] = tmp_res + 1;
                     }

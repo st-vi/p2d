@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
 use crate::parsing::equation_datastructure::EquationKind::{Eq, Le};
@@ -290,7 +290,7 @@ fn replace_negative_factors(equation: &Equation) -> Equation {
 }
 
 impl PseudoBooleanFormula {
-    fn hash<H: Hasher>(&self, state: &mut H, variables_in_scope: &Vec<bool>) {
+    fn hash<H: Hasher>(&self, state: &mut H, variables_in_scope: &BTreeSet<usize>) {
 
         /*
         for constraint in &self.constraints {
@@ -306,7 +306,7 @@ impl PseudoBooleanFormula {
 
 
         for (varibale_index, constraint_list) in self.constraints_by_variable.iter().enumerate() {
-            if *variables_in_scope.get(varibale_index).unwrap(){
+            if variables_in_scope.contains(&varibale_index) {
                 for constraint_index in constraint_list {
                     let constraint = self.constraints.get(*constraint_index).unwrap();
                     if constraint.is_unsatisfied(){
@@ -322,7 +322,7 @@ impl PseudoBooleanFormula {
     }
 }
 
-pub fn calculate_hash(t: &PseudoBooleanFormula, n: u32, variables_in_scope: &Vec<bool>) -> u64 {
+pub fn calculate_hash(t: &PseudoBooleanFormula, n: u32, variables_in_scope: &BTreeSet<usize>) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s, variables_in_scope);
     n.hash(&mut s);
