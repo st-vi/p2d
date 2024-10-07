@@ -19,6 +19,7 @@ pub struct Solver {
     pub statistics: Statistics,
     variable_in_scope: Vec<bool>,
     progress: HashMap<u32, u32>,
+    last_progress: f32
 }
 
 impl Solver {
@@ -27,10 +28,9 @@ impl Solver {
         // create adjacency matrix connection graph
         let mut matrix = Vec::new();
         for (i, constraint_list) in self.pseudo_boolean_formula.constraints_by_variable.iter().enumerate() {
-            let mut vector = Vec::new();
-            for _ in 0..self.pseudo_boolean_formula.number_variables {
-                vector.push(false);
-            }
+            let mut vector = Vec::with_capacity(self.pseudo_boolean_formula.number_variables as usize);
+            vector.extend((0..self.pseudo_boolean_formula.number_variables).map(|_| false));
+
             if *self.variable_in_scope.get(i).unwrap() && self.assignments.get(i as usize).unwrap().is_none() {
                 for constraint_index in constraint_list {
                     let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
@@ -52,10 +52,9 @@ impl Solver {
         let matrix = self.create_adjacency_matrix_for_connected_components();
         let mut already_visited: HashSet<usize> = HashSet::new();
         for i in 0..self.pseudo_boolean_formula.number_variables {
-            let mut component = Vec::new();
-            for _ in 0..self.pseudo_boolean_formula.number_variables {
-                component.push(false);
-            }
+            let mut component = Vec::with_capacity(self.pseudo_boolean_formula.number_variables as usize);
+            component.extend((0..self.pseudo_boolean_formula.number_variables).map(|_| false));
+
             if *self.variable_in_scope.get(i as usize).unwrap() && self.assignments.get(i as usize).unwrap().is_none() && self.add_connected_constraints(&matrix, &mut component, i as usize, &mut already_visited) {
                 components.push(component);
             }
@@ -71,10 +70,9 @@ impl Solver {
                 number_unassigned_variables: 0,
                 number_unsat_constraints: 0,
             };
-            let mut constraints = Vec::new();
-            for _ in &self.pseudo_boolean_formula.constraints {
-                constraints.push(false);
-            }
+            let mut constraints = Vec::with_capacity(self.pseudo_boolean_formula.constraints.len());
+            constraints.extend((0..self.pseudo_boolean_formula.constraints.len()).map(|_| false));
+
             for (i,v) in c.iter().enumerate() {
                 if *v {
                     let constraint_indexes = self.pseudo_boolean_formula.constraints_by_variable.get(i).unwrap();
@@ -135,12 +133,11 @@ impl Solver {
                 cache_error: 0,
                 time_to_compute: 0,
                 cache_entries: 0,
-                branch_counter: 0,
-                merge_counter: 0,
             },
             assignments: Vec::new(),
             variable_in_scope: Vec::new(),
             progress: HashMap::new(),
+            last_progress: -1.0,
         };
         for _ in 0..number_variables{
             solver.assignments.push(None);
@@ -185,10 +182,12 @@ impl Solver {
             index
         }
 
-
  */
 
 
+
+
+/*
         for constraint in &self.pseudo_boolean_formula.constraints {
             if constraint.is_unsatisfied(){
                 for literal in &constraint.unassigned_literals {
@@ -202,44 +201,40 @@ impl Solver {
         }
         None
 
+*/
 
 
-/*
 
-        let mut counter: HashMap<usize,u64> = HashMap::new();
-        for (variable_index, taken) in self.variable_in_scope.iter().enumerate() {
-            if *taken && self.assignments.get(variable_index).unwrap().is_none() {
-                let tmp_res = counter.get(&variable_index);
-                match tmp_res {
-                    None => {
-                        counter.insert(variable_index, 1);
-                    },
-                    Some(v) => {
-                        counter.insert(variable_index, v + 1);
+
+
+        let mut counter: Vec<u64> = Vec::new();
+        for _ in 0..self.pseudo_boolean_formula.number_variables {
+            counter.push(0);
+        }
+
+
+        for constraint in &self.pseudo_boolean_formula.constraints {
+            if constraint.is_unsatisfied(){
+                for literal in &constraint.unassigned_literals {
+                    if let Some(l) = literal {
+                        if *self.variable_in_scope.get(l.index as usize).unwrap() {
+                            let tmp_res = counter.get(l.index as usize).unwrap();
+                            counter[l.index as usize] = tmp_res + 1;
+                        }
                     }
                 }
-
             }
         }
-        if counter.len() > 0 {
-            let mut max_index: usize = 0;
-            let mut max_value: u64 = 0;
-            for (k,v) in counter.iter() {
-                if v > &max_value {
-                    max_value = *v;
-                    max_index = *k;
-                }
+
+        let mut max_index: usize = 0;
+        let mut max_value: u64 = 0;
+        for (k,v) in counter.iter().enumerate() {
+            if v > &max_value {
+                max_value = *v;
+                max_index = k;
             }
-            Some(max_index as u32)
-        }else{
-            None
         }
-
-
- */
-
-
-
+        Some(max_index as u32)
     }
 
     pub fn solve(&mut self) -> u128 {
@@ -267,10 +262,10 @@ impl Solver {
                 continue
             }
 
-
-            //cache start: check cache for matching entry
-            let cached_result = self.get_cached_result();
-            if let Some(c) = cached_result {
+            #[cfg(feature = "cache")]
+            {
+                let cached_result = self.get_cached_result();
+                if let Some(c) = cached_result {
                     self.result_stack.push(c);
                     self.statistics.cache_hits += 1;
                     if !self.backtrack(){
@@ -278,31 +273,24 @@ impl Solver {
                         return self.result_stack.pop().unwrap();
                     }
                     continue;
+                }
             }
-            //cache end
 
-
-
-
-
-
-
-
-
-            if let Some(assignment_entry) = self.assignment_stack.last() {
-                match assignment_entry {
-                    ComponentBranch(_) => {},
-                    Assignment(_) => {
-                        if self.branch_components() {
-                            self.statistics.branch_counter += 1;
-                            continue;
+            #[cfg(feature = "disconnected_components")]
+            {
+                if let Some(assignment_entry) = self.assignment_stack.last() {
+                    match assignment_entry {
+                        ComponentBranch(_) => {},
+                        Assignment(_) => {
+                            if self.branch_components() {
+                                continue;
+                            }
                         }
                     }
-                }
-            }else{
-                if self.branch_components() {
-                    self.statistics.branch_counter += 1;
-                    continue;
+                }else{
+                    if self.branch_components() {
+                        continue;
+                    }
                 }
             }
 
@@ -426,7 +414,8 @@ impl Solver {
     /// the whole search space has been searched
     fn backtrack(&mut self) -> bool {
         loop {
-            if let Some(top_element) = self.assignment_stack.last(){
+            let assignment_clone = self.assignment_stack.last().cloned();
+            if let Some(top_element) = assignment_clone {
                 match top_element {
                     Assignment(last_assignment) => {
                         if last_assignment.decision_level == 0{
@@ -438,31 +427,31 @@ impl Solver {
                             let sign = last_assignment.variable_sign;
                             let decision_level = last_assignment.decision_level;
 
-                            /*
-                            //show progress
-                            if decision_level < 8 {
-                                let res = self.progress.get(&decision_level);
-                                match res {
-                                    None => {
-                                        self.progress.insert(decision_level, 1);
-                                    },
-                                    Some(v) => {
-                                        self.progress.insert(decision_level, *v + 1);
+                            #[cfg(feature = "show_progress")]
+                            {
+                                if decision_level < 9 {
+                                    let res = self.progress.get(&decision_level);
+                                    match res {
+                                        None => {
+                                            self.progress.insert(decision_level, 1);
+                                        },
+                                        Some(v) => {
+                                            self.progress.insert(decision_level, *v + 1);
+                                        }
+                                    }
+                                    for i in decision_level + 1..9{
+                                        self.progress.remove(&i);
                                     }
                                 }
-                                for i in decision_level + 1..8{
-                                    self.progress.remove(&i);
+                                let mut progress = 0.0;
+                                for (k,v) in &self.progress {
+                                    progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
+                                }
+                                if progress != self.last_progress {
+                                    self.last_progress = progress;
+                                    println!("{progress} %");
                                 }
                             }
-                            let mut progress = 0.0;
-                            for (k,v) in &self.progress {
-                                progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
-                            }
-                            println!("{progress} %");
-                            //end sho progress
-
-                             */
-
 
                             self.undo_last_assignment();
                             let new_sign = !sign;
@@ -490,15 +479,14 @@ impl Solver {
                             for _ in 0..last_branch.components.len(){
                                 branch_result = branch_result * self.result_stack.pop().unwrap();
                             }
-                            if branch_result == 0 {
-                                println!("0");
-                            }
+
                             self.result_stack.push(branch_result);
+
                             self.number_unassigned_variables = last_branch.previous_number_unassigned_variables as u32;
                             self.number_unsat_constraints = last_branch.previous_number_unsat_constraints;
                             self.variable_in_scope = last_branch.previous_variables_in_scope.clone();
                             self.assignment_stack.pop();
-                            self.statistics.merge_counter += 1;
+
                         }else{
                             // process next component
                             //TODO if one component result is zero backtrack beyond branch
@@ -512,7 +500,6 @@ impl Solver {
                                     self.number_unsat_constraints = last_branch.previous_number_unsat_constraints;
                                     self.variable_in_scope = last_branch.previous_variables_in_scope.clone();
                                     self.assignment_stack.pop();
-                                    println!("test");
                                     continue;
                                 }
                                 last_branch.current_component += 1;
@@ -599,10 +586,12 @@ impl Solver {
     }
 }
 
+#[derive(Clone)]
 enum AssignmentStackEntry {
     Assignment(VariableAssignment),
     ComponentBranch(ComponentBasedFormula)
 }
+#[derive(Clone)]
 struct VariableAssignment {
     decision_level: u32,
     variable_index: u32,
@@ -616,11 +605,9 @@ pub struct Statistics {
     cache_error: u32,
     time_to_compute: u128,
     cache_entries: usize,
-    branch_counter: u32,
-    merge_counter: u32,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub(crate) enum AssignmentKind {
     Propagated,
     FirstDecision,

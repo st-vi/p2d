@@ -7,3 +7,10 @@ edition = "2021"
 pest = "2.6"
 pest_derive = "2.6"
 bimap = "0.6"
+
+[features]
+show_progress = []
+cache = []
+disconnected_components = []
+
+default = ["show_progress", "cache", "disconnected_components"]

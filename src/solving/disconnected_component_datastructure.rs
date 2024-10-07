@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ComponentBasedFormula {
     pub components: Vec<Component>,
     pub current_component: usize,
@@ -18,7 +18,7 @@ impl ComponentBasedFormula {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Component {
     pub variables: Vec<bool>,
     pub number_unsat_constraints: u32,
