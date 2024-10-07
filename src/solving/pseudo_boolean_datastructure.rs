@@ -292,6 +292,17 @@ fn replace_negative_factors(equation: &Equation) -> Equation {
 
 impl PseudoBooleanFormula {
     fn hash<H: Hasher>(&self, state: &mut H, variables_in_scope: &Vec<bool>) {
+
+        for constraint in &self.constraints {
+            if constraint.is_unsatisfied() {
+                constraint.hash(state);
+            }
+
+        }
+        variables_in_scope.hash(state);
+
+
+/*
         for (varibale_index, constraint_list) in self.constraints_by_variable.iter().enumerate() {
             if *variables_in_scope.get(varibale_index).unwrap(){
                 for constraint_index in constraint_list {
@@ -302,6 +313,10 @@ impl PseudoBooleanFormula {
                 }
             }
         }
+*/
+
+
+
     }
 }
 
@@ -314,12 +329,9 @@ pub fn calculate_hash(t: &PseudoBooleanFormula, n: u32, variables_in_scope: &Vec
 
 impl Hash for Constraint {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.literals.hash(state);
-        //self.assignments.hash(state);
-        self.sum_true.hash(state);
-        self.sum_unassigned.hash(state);
+        self.assignments.hash(state);
         self.degree.hash(state);
-        //self.unassigned_literals.hash(state);
+        self.unassigned_literals.hash(state);
     }
 }
 
