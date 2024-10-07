@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
 use crate::parsing::equation_datastructure::EquationKind::{Eq, Le};
@@ -13,11 +14,11 @@ pub struct PseudoBooleanFormula {
 #[derive(Clone,Debug,Eq, PartialEq)]
 pub struct Constraint {
     pub literals: Vec<Option<Literal>>,
-    pub unassigned_literals: Vec<Option<Literal>>,
+    pub unassigned_literals: BTreeMap<usize, Literal>,
     pub degree: i32,
     pub sum_true: u32,
     pub sum_unassigned: u32,
-    pub assignments: Vec<Option<bool>>,
+    pub assignments: BTreeMap<usize, bool>,
     pub factor_sum: u32,
     //TODO cashe sum of max literal and update when necessary instead of calculating every time
 }
@@ -78,21 +79,19 @@ impl PseudoBooleanFormula {
                 sum_true: 0,
                 sum_unassigned: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32,
                 literals: Vec::with_capacity((opb_file.max_name_index - 1) as usize),
-                unassigned_literals: Vec::new(),
-                assignments: Vec::new(),
+                unassigned_literals: BTreeMap::new(),
+                assignments: BTreeMap::new(),
                 factor_sum: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32
             };
             for _ in 0..opb_file.max_name_index{
                 constraint.literals.push(None);
-                constraint.assignments.push(None);
-                constraint.unassigned_literals.push(None);
             }
             for summand in equation.lhs {
                 constraint.literals[summand.variable_index as usize] = Some(Literal{
                     index: summand.variable_index,
                     factor: summand.factor as u32,
                     positive: summand.positive});
-                constraint.unassigned_literals[summand.variable_index as usize] = Some(Literal{
+                constraint.unassigned_literals.insert(summand.variable_index as usize, Literal{
                     index: summand.variable_index,
                     factor: summand.factor as u32,
                     positive: summand.positive});
@@ -107,7 +106,7 @@ impl PseudoBooleanFormula {
 
 impl Constraint {
     pub fn propagate(&mut self, literal: Literal) -> PropagationResult {
-        if let Some(a) = self.assignments.get(literal.index as usize).unwrap() {
+        if let Some(a) = self.assignments.get(&(literal.index as usize)) {
             if *a == literal.positive {
                 return NothingToPropagated;
             }else {
@@ -115,6 +114,7 @@ impl Constraint {
                 return Unsatisfied
             }
         }
+
         /*
         if self.assignments.contains(&(literal.index, !literal.positive)) {
             return Unsatisfied
@@ -134,13 +134,13 @@ impl Constraint {
                     //literal factor is taken
                     self.sum_true += literal_in_constraint.factor;
                     self.sum_unassigned -= literal_in_constraint.factor;
-                    self.unassigned_literals[literal.index as usize] = None;
-                    self.assignments[literal.index as usize] = Some(literal.positive);
+                    self.unassigned_literals.remove(&(literal.index as usize));
+                    self.assignments.insert(literal.index as usize, literal.positive);
                 }else{
                     //literal factor is not taken
                     self.sum_unassigned -= literal_in_constraint.factor;
-                    self.unassigned_literals[literal.index as usize] = None;
-                    self.assignments[literal.index as usize] = Some(literal.positive);
+                    self.unassigned_literals.remove(&(literal.index as usize));
+                    self.assignments.insert(literal.index as usize, literal.positive);
                 }
                 if self.sum_true >= self.degree as u32 {
                     // fulfilled
@@ -156,17 +156,18 @@ impl Constraint {
                 }else {
                     let mut max_literal_factor = 0;
                     let mut max_literal_index = 0;
-                    for literal in &self.unassigned_literals {
-                        if let Some(l) = literal {
-                            if l.factor > max_literal_factor {
-                                max_literal_factor = l.factor;
-                                max_literal_index = l.index;
-                            }
+                    let mut max_literal_sign = false;
+                    for (_,literal) in &self.unassigned_literals {
+                        if literal.factor > max_literal_factor {
+                            max_literal_factor = literal.factor;
+                            max_literal_index = literal.index;
+                            max_literal_sign = literal.positive;
                         }
+
                     }
                     if self.sum_true + self.sum_unassigned < (self.degree as u32) + max_literal_factor {
                         //max literal implied
-                        let return_value = ImpliedLiteral(self.unassigned_literals.get(max_literal_index as usize).unwrap().clone().unwrap());
+                        let return_value = ImpliedLiteral(Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign});
                         return return_value;
                     }
                 }
@@ -177,25 +178,20 @@ impl Constraint {
     }
 
     pub fn undo(&mut self, variable_index: u32, variable_sign: bool) -> bool {
-        if let Some(_) = self.assignments.get(variable_index as usize).unwrap() {
+        if self.assignments.contains_key(&(variable_index as usize)) {
             if let Some(literal) = self.literals.get(variable_index as usize).unwrap() {
                 let satisfied_before_undo = self.sum_true >= self.degree as u32;
-                self.unassigned_literals[literal.index as usize] = Some(literal.clone());
-                self.assignments[variable_index as usize] = None;
+                self.unassigned_literals.insert(literal.index as usize, literal.clone());
+                self.assignments.remove(&(variable_index as usize));
                 self.sum_unassigned += literal.factor;
                 if literal.positive == variable_sign {
-                    if self.sum_true < literal.factor{
-                        println!("hello");
-                    }
                     self.sum_true -= literal.factor;
                 }
                 let satisfied_after_undo = self.sum_true >= self.degree as u32;
                 if satisfied_before_undo && !satisfied_after_undo {
                     return true;
                 }
-            }else{
             }
-        }else{
         }
 
         false
@@ -211,17 +207,20 @@ impl Constraint {
         }else{
             let mut max_literal_factor = 0;
             let mut max_literal_index = 0;
-            for literal in &self.unassigned_literals {
-                if let Some(l) = literal {
-                    if l.factor > max_literal_factor {
-                        max_literal_factor = l.factor;
-                        max_literal_index = l.index;
-                    }
+            let mut max_literal_sign = false;
+            for (_,literal) in &self.unassigned_literals {
+                if literal.factor > max_literal_factor {
+                    max_literal_factor = literal.factor;
+                    max_literal_index = literal.index;
+                    max_literal_sign = literal.positive;
                 }
+            }
+            if max_literal_factor == 0{
+                println!("test");
             }
             if self.sum_true + self.sum_unassigned < (self.degree as u32) + max_literal_factor {
                 //max literal implied
-                let return_value = ImpliedLiteral(self.unassigned_literals.get(max_literal_index as usize).unwrap().clone().unwrap());
+                let return_value = ImpliedLiteral(Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign});
                 return return_value;
             }
         }
@@ -293,6 +292,7 @@ fn replace_negative_factors(equation: &Equation) -> Equation {
 impl PseudoBooleanFormula {
     fn hash<H: Hasher>(&self, state: &mut H, variables_in_scope: &Vec<bool>) {
 
+        /*
         for constraint in &self.constraints {
             if constraint.is_unsatisfied() {
                 constraint.hash(state);
@@ -301,8 +301,10 @@ impl PseudoBooleanFormula {
         }
         variables_in_scope.hash(state);
 
+         */
 
-/*
+
+
         for (varibale_index, constraint_list) in self.constraints_by_variable.iter().enumerate() {
             if *variables_in_scope.get(varibale_index).unwrap(){
                 for constraint_index in constraint_list {
@@ -313,7 +315,7 @@ impl PseudoBooleanFormula {
                 }
             }
         }
-*/
+
 
 
 

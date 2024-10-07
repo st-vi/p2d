@@ -19,6 +19,7 @@ fn main() {
 
 fn run_not_rec(){
     let file_content = fs::read_to_string("/home/stefan/stefan-vill-master/tmp_eval/tmp5.opb").expect("cannot read file");
+    //let file_content = fs::read_to_string("./test_models/berkeleydb.opb").expect("cannot read file");
     let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
     let formula = PseudoBooleanFormula::new(&opb_file);
     let mut solver = Solver::new(formula);

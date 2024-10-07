@@ -215,12 +215,10 @@ impl Solver {
 
         for constraint in &self.pseudo_boolean_formula.constraints {
             if constraint.is_unsatisfied(){
-                for literal in &constraint.unassigned_literals {
-                    if let Some(l) = literal {
-                        if *self.variable_in_scope.get(l.index as usize).unwrap() {
-                            let tmp_res = counter.get(l.index as usize).unwrap();
-                            counter[l.index as usize] = tmp_res + 1;
-                        }
+                for (_,literal) in &constraint.unassigned_literals {
+                    if *self.variable_in_scope.get(literal.index as usize).unwrap() {
+                        let tmp_res = counter.get(literal.index as usize).unwrap();
+                        counter[literal.index as usize] = tmp_res + 1;
                     }
                 }
             }
