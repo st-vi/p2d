@@ -186,22 +186,22 @@ impl Solver {
 
 
 
-
 /*
+
         for constraint in &self.pseudo_boolean_formula.constraints {
             if constraint.is_unsatisfied(){
-                for literal in &constraint.unassigned_literals {
-                    if let Some(l) = literal {
-                        if *self.variable_in_scope.get(l.index as usize).unwrap() {
-                            return Some(l.index);
-                        }
+                for (_,literal) in &constraint.unassigned_literals {
+                    if *self.variable_in_scope.get(literal.index as usize).unwrap() {
+                        return Some(literal.index);
                     }
                 }
             }
         }
         None
 
-*/
+
+
+ */
 
 
 
@@ -233,6 +233,8 @@ impl Solver {
             }
         }
         Some(max_index as u32)
+
+
     }
 
     pub fn solve(&mut self) -> u128 {
@@ -412,8 +414,7 @@ impl Solver {
     /// the whole search space has been searched
     fn backtrack(&mut self) -> bool {
         loop {
-            let assignment_clone = self.assignment_stack.last().cloned();
-            if let Some(top_element) = assignment_clone {
+            if let Some(top_element) = self.assignment_stack.last() {
                 match top_element {
                     Assignment(last_assignment) => {
                         if last_assignment.decision_level == 0{
@@ -487,8 +488,10 @@ impl Solver {
 
                         }else{
                             // process next component
-                            //TODO if one component result is zero backtrack beyond branch
+
                             if let ComponentBranch(mut last_branch) = self.assignment_stack.pop().unwrap() {
+                                //TODO if one component result is zero backtrack beyond branch: It does not work like this
+/*
                                 if *self.result_stack.last().unwrap() == 0 {
                                     for _ in 0..=last_branch.current_component {
                                         self.result_stack.pop();
@@ -500,6 +503,10 @@ impl Solver {
                                     self.assignment_stack.pop();
                                     continue;
                                 }
+
+ */
+
+
                                 last_branch.current_component += 1;
                                 self.number_unassigned_variables = last_branch.components.get(last_branch.current_component).unwrap().number_unassigned_variables;
                                 self.number_unsat_constraints = last_branch.components.get(last_branch.current_component).unwrap().number_unsat_constraints as usize;

@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
 use crate::parsing::equation_datastructure::EquationKind::{Eq, Le};
