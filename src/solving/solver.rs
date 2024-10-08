@@ -271,18 +271,20 @@ impl Solver {
 
             #[cfg(feature = "disconnected_components")]
             {
-                if let Some(assignment_entry) = self.assignment_stack.last() {
-                    match assignment_entry {
-                        ComponentBranch(_) => {},
-                        Assignment(_) => {
-                            if self.branch_components() {
-                                continue;
+                if self.decision_level < 8 || self.decision_level % 4 == 1 {
+                    if let Some(assignment_entry) = self.assignment_stack.last() {
+                        match assignment_entry {
+                            ComponentBranch(_) => {},
+                            Assignment(_) => {
+                                if self.branch_components() {
+                                    continue;
+                                }
                             }
                         }
-                    }
-                }else{
-                    if self.branch_components() {
-                        continue;
+                    }else{
+                        if self.branch_components() {
+                            continue;
+                        }
                     }
                 }
             }
