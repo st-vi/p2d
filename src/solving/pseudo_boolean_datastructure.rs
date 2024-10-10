@@ -319,20 +319,7 @@ fn replace_negative_factors(equation: &Equation) -> Equation {
 }
 
 impl PseudoBooleanFormula {
-    fn hash<H: Hasher>(&mut self, state: &mut H, variables_in_scope: &BTreeSet<usize>, constraints_in_scope: &BTreeSet<usize>) {
-
-        /*
-        for constraint in &self.constraints {
-            if constraint.is_unsatisfied() {
-                constraint.hash(state);
-            }
-
-        }
-        variables_in_scope.hash(state);
-
-         */
-
-//TODO keep a constraint_in_scope set up to date and then only iterate over that
+    fn hash<H: Hasher>(&mut self, state: &mut H, constraints_in_scope: &BTreeSet<usize>) {
 
         for ci in constraints_in_scope {
             let constraint = self.constraints.get_mut(*ci).unwrap();
@@ -340,30 +327,12 @@ impl PseudoBooleanFormula {
                 constraint.calculate_hash().hash(state);
             }
         }
-/*
-        for (varibale_index, constraint_list) in self.constraints_by_variable.iter().enumerate() {
-            if variables_in_scope.contains(&varibale_index) {
-                for constraint_index in constraint_list {
-                    let constraint = self.constraints.get_mut(*constraint_index).unwrap();
-                    if constraint.is_unsatisfied(){
-                        //constraint.hash_value.hash(state);
-                        constraint.calculate_hash().hash(state);
-                    }
-                }
-            }
-        }
-
- */
-
-
-
-
     }
 }
 
-pub fn calculate_hash(t: &mut PseudoBooleanFormula, n: u32, variables_in_scope: &BTreeSet<usize>, constraint_indexes_in_scope: &BTreeSet<usize>) -> u64 {
+pub fn calculate_hash(t: &mut PseudoBooleanFormula, n: u32, constraint_indexes_in_scope: &BTreeSet<usize>) -> u64 {
     let mut s = DefaultHasher::new();
-    t.hash(&mut s, variables_in_scope, constraint_indexes_in_scope);
+    t.hash(&mut s, constraint_indexes_in_scope);
     n.hash(&mut s);
     s.finish()
 }

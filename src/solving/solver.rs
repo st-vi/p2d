@@ -134,8 +134,6 @@ impl Solver {
             cache: HashMap::with_capacity(100),
             statistics: Statistics {
                 cache_hits: 0,
-                cache_double_entries: 0,
-                cache_error: 0,
                 time_to_compute: 0,
                 cache_entries: 0,
                 learned_clauses: 0,
@@ -702,14 +700,14 @@ impl Solver {
                 }
             }
              */
-            self.cache.insert(calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.variable_in_scope, &self.constraint_indexes_in_scope), value);
+            self.cache.insert(calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope), value);
             self.statistics.cache_entries += 1;
         }
     }
 
     #[cfg(feature = "cache")]
     fn get_cached_result(&mut self) -> Option<u128> {
-        match self.cache.get(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.variable_in_scope, &self.constraint_indexes_in_scope)) {
+        match self.cache.get(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope)) {
             None => None,
             Some(c) => Some(*c)
         }
@@ -824,7 +822,7 @@ impl Solver {
             constraint.literals.push(None);
         }
         //println!("decision_level conflict: {}", self.decision_level);
-        let mut degree = 1;
+        //let mut degree = 1;
         for (index, entry) in reason_set_propagated.iter().enumerate() {
             if let Some((a,sign,decision_level)) = entry {
                 constraint.literals[index] = Some(Literal{
@@ -915,8 +913,6 @@ struct VariableAssignment {
 #[derive(Debug)]
 pub struct Statistics {
     cache_hits: u32,
-    cache_double_entries: u32,
-    cache_error: u32,
     time_to_compute: u128,
     cache_entries: usize,
     learned_clauses: usize,
