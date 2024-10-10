@@ -18,8 +18,10 @@ fn main() {
 }
 
 fn run_not_rec(){
-    let file_content = fs::read_to_string("/home/stefan/stefan-vill-master/tmp_eval/tmp5.opb").expect("cannot read file");
+    //let file_content = fs::read_to_string("/home/stefan/stefan-vill-master/tmp_eval/tmp5.opb").expect("cannot read file");
     //let file_content = fs::read_to_string("./test_models/berkeleydb.opb").expect("cannot read file");
+    let file_content = fs::read_to_string("./test_models/financialservices01.opb").expect("cannot read file");
+    //let file_content = "x3 >= 0;\n-x1 + 2 x2 >= 1;\n-x2 -2 x1 >= -1;\n".to_string();
     let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
     let formula = PseudoBooleanFormula::new(&opb_file);
     let mut solver = Solver::new(formula);

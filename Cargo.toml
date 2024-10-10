@@ -12,5 +12,6 @@ bimap = "0.6"
 show_progress = []
 cache = []
 disconnected_components = []
+clause_learning = []
 
-default = ["show_progress", "cache", "disconnected_components"]
+default = ["cache", "disconnected_components", "show_progress", "clause_learning"]
