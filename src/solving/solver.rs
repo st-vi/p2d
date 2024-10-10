@@ -26,99 +26,6 @@ pub struct Solver {
 }
 
 impl Solver {
-    #[cfg(feature = "disconnected_components")]
-    fn create_adjacency_matrix_for_connected_components(&self) -> BTreeMap<usize,BTreeSet<usize>> {
-        // create adjacency matrix connection graph
-        let mut matrix = BTreeMap::new();
-        for (i, constraint_list) in self.pseudo_boolean_formula.constraints_by_variable.iter().enumerate() {
-            let mut vector = BTreeSet::new();
-
-            if self.variable_in_scope.contains(&i) && self.assignments.get(i as usize).unwrap().is_none() {
-                for constraint_index in constraint_list {
-                    let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-                    for variable in &constraint.literals {
-                        if let Some(v) = variable {
-                            if self.assignments.get(v.index as usize).unwrap().is_none(){
-                                vector.insert(v.index as usize);
-                            }
-                        }
-                    }
-                }
-            }
-            if vector.len() > 0 {
-                matrix.insert(i, vector);
-            }
-        }
-        matrix
-    }
-    #[cfg(feature = "disconnected_components")]
-    pub fn to_disconnected_components(&self) -> Option<ComponentBasedFormula> {
-        let mut components = Vec::new();
-        let matrix = self.create_adjacency_matrix_for_connected_components();
-        let mut already_visited: HashSet<usize> = HashSet::new();
-        for i in 0..self.pseudo_boolean_formula.number_variables {
-            let mut component = BTreeSet::new();
-
-            if self.variable_in_scope.contains(&(i as usize)) && self.assignments.get(i as usize).unwrap().is_none() && self.add_connected_constraints(&matrix, &mut component, i as usize, &mut already_visited) {
-                components.push(component);
-            }
-        }
-        if components.len() <= 1 {
-            return None;
-        }
-
-        let mut component_based_formula = ComponentBasedFormula::new(self.number_unsat_constraints, self.number_unassigned_variables, self.variable_in_scope.clone(), self.constraint_indexes_in_scope.clone());
-        for c in &components {
-            let mut component = Component{
-                variables: c.clone(),
-                number_unassigned_variables: c.len() as u32,
-                number_unsat_constraints: 0,
-                constraint_indexes_in_scope: BTreeSet::new(),
-            };
-            for v in c {
-                for ci in self.pseudo_boolean_formula.constraints_by_variable.get(*v).unwrap() {
-                    component.constraint_indexes_in_scope.insert(*ci);
-                }
-            }
-            let mut constraints = Vec::with_capacity(self.pseudo_boolean_formula.constraints.len() + self.learned_clauses.len());
-            constraints.extend((0..self.pseudo_boolean_formula.constraints.len()).map(|_| false));
-
-            for i in c {
-                let constraint_indexes = self.pseudo_boolean_formula.constraints_by_variable.get(*i).unwrap();
-                for constraint_index in constraint_indexes{
-                    constraints[*constraint_index] = true;
-                }
-            }
-
-            for (i,v) in constraints.iter().enumerate() {
-                if *v {
-                    if self.pseudo_boolean_formula.constraints.get(i).unwrap().is_unsatisfied() {
-                        component.number_unsat_constraints += 1;
-                    }
-                }
-            }
-
-            component_based_formula.components.push(component);
-        }
-
-        Some(component_based_formula)
-    }
-
-    #[cfg(feature = "disconnected_components")]
-    fn add_connected_constraints(&self, matrix: &BTreeMap<usize,BTreeSet<usize>>, component: &mut BTreeSet<usize>, variable_index: usize, visited: &mut HashSet<usize>) -> bool {
-        if visited.contains(&variable_index) {
-            return false
-        }
-        visited.insert(variable_index);
-        if let Some(vector) = matrix.get(&variable_index) {
-            for index in vector {
-                component.insert(*index);
-                self.add_connected_constraints(matrix, component, *index, visited);
-            }
-        }
-        true
-    }
-
     pub fn new(pseudo_boolean_formula: PseudoBooleanFormula) -> Solver {
         let number_unsat_constraints = pseudo_boolean_formula.constraints.len();
         let number_variables = pseudo_boolean_formula.number_variables;
@@ -156,35 +63,6 @@ impl Solver {
             }
         }
         solver
-    }
-
-    fn get_next_variable(&mut self) -> Option<u32> {
-        let mut counter: Vec<u64> = Vec::new();
-        for _ in 0..self.pseudo_boolean_formula.number_variables {
-            counter.push(0);
-        }
-
-
-        for constraint in &self.pseudo_boolean_formula.constraints {
-            if constraint.is_unsatisfied(){
-                for (_,literal) in &constraint.unassigned_literals {
-                    if self.variable_in_scope.contains(&(literal.index as usize)) {
-                        let tmp_res = counter.get(literal.index as usize).unwrap();
-                        counter[literal.index as usize] = tmp_res + 1;
-                    }
-                }
-            }
-        }
-
-        let mut max_index: usize = 0;
-        let mut max_value: u64 = 0;
-        for (k,v) in counter.iter().enumerate() {
-            if v > &max_value {
-                max_value = *v;
-                max_index = k;
-            }
-        }
-        Some(max_index as u32)
     }
 
     pub fn solve(&mut self) -> u128 {
@@ -275,36 +153,49 @@ impl Solver {
         }
     }
 
-
-    #[cfg(feature = "clause_learning")]
-    fn safe_conflict_clause(&mut self, constraint_index: ConstraintIndex) {
-        let constraint = match constraint_index {
-            NormalConstraintIndex(i) => {
-                self.pseudo_boolean_formula.constraints.get(i).unwrap()
-            },
-            LearnedClauseIndex(i) => {
-                self.learned_clauses.get(i).unwrap()
-            }
-        };
-
-        let mut variable_index = BTreeMap::new();
-        for (index, (sign, kind, decision_level)) in &constraint.assignments {
-            //if *decision_level == self.decision_level {
-            variable_index.insert(*index, (*kind, *sign, *decision_level));
-            //}
-        }
-        if let Some(learned_constraint) = self.analyze(&mut variable_index) {
-            if let LearnedClauseIndex(constraint_index) = learned_constraint.index {
-                for (index, _) in &learned_constraint.assignments {
-                    self.learned_clauses_by_variables.get_mut(*index).unwrap().push(constraint_index);
+    /// Checks if there are any implications and if so propagates them until there are no more implications
+    /// # Returns
+    /// true: all implications were assigned without any conflicts
+    /// false: a conflict occurred and the formula is therefore unsatisfiable
+    fn simplify(&mut self) -> bool {
+        let mut propagation_set = Vec::new();
+        for constraint in &mut self.pseudo_boolean_formula.constraints {
+            match constraint.simplify(){
+                Satisfied => {
+                    self.number_unsat_constraints -= 1;
+                },
+                Unsatisfied => {
+                    return false;
+                },
+                ImpliedLiteral(l) => {
+                    propagation_set.push((l.index, l.positive, constraint.index));
                 }
-                self.learned_clauses.push(learned_constraint);
+                _ => {}
+            }
+        }
+        for (index, sign, constraint_index) in propagation_set {
+            if !self.propagate(index, sign, Propagated(constraint_index)).is_none(){
+                return false;
+            }
+        }
+        true
+    }
+
+    fn decide(&mut self) -> Option<(u32,bool)>{
+        if self.number_unassigned_variables == 0 {
+            return None;
+        }
+        let variable_index = self.get_next_variable();
+        match variable_index {
+            None => None,
+            Some(variable_index) => {
+                self.decision_level += 1;
+                Some((variable_index, true))
             }
         }
     }
 
-
-/// This function is used to set a variable to true or false in all constraints.
+    /// This function is used to set a variable to true or false in all constraints.
     /// It also detects implied variables and also sets them until no more implications are left.
     /// It adapts all constraints, the assignment_stack and the number of unsatisfied constraints
     /// accordingly. This means all relevant datastructures for setting a variable assignment
@@ -417,64 +308,6 @@ impl Solver {
         None
     }
 
-    #[cfg(feature = "disconnected_components")]
-    fn branch_components(&mut self) -> bool {
-        let result = self.to_disconnected_components();
-        match result {
-            Some(component_based_formula) => {
-                self.number_unsat_constraints = component_based_formula.components.get(0).unwrap().number_unsat_constraints as usize;
-                self.number_unassigned_variables = component_based_formula.components.get(0).unwrap().number_unassigned_variables;
-                self.variable_in_scope = component_based_formula.components.get(0).unwrap().variables.clone();
-                self.constraint_indexes_in_scope = component_based_formula.components.get(0).unwrap().constraint_indexes_in_scope.clone();
-                self.assignment_stack.push(ComponentBranch(component_based_formula));
-                true
-            },
-            None => {
-                false
-            }
-        }
-    }
-
-    fn decide(&mut self) -> Option<(u32,bool)>{
-        if self.number_unassigned_variables == 0 {
-            return None;
-        }
-        let variable_index = self.get_next_variable();
-        match variable_index {
-            None => None,
-            Some(variable_index) => {
-                self.decision_level += 1;
-                Some((variable_index, true))
-            }
-        }
-    }
-
-    #[cfg(feature = "show_progress")]
-    fn print_progress(&mut self, decision_level: u32) {
-        if decision_level < 9 {
-            let res = self.progress.get(&decision_level);
-            match res {
-                None => {
-                    self.progress.insert(decision_level, 1);
-                },
-                Some(v) => {
-                    self.progress.insert(decision_level, *v + 1);
-                }
-            }
-            for i in decision_level + 1..9{
-                self.progress.remove(&i);
-            }
-        }
-        let mut progress = 0.0;
-        for (k,v) in &self.progress {
-            progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
-        }
-        if progress != self.last_progress {
-            self.last_progress = progress;
-            println!("{progress} %");
-        }
-    }
-
     /// This functions backtracks manually by chancing the necessary data structures.
     /// Backtracking means: undoing all assignments until the last decision. If the decision was a first
     /// decision, change the sign of the variable, if not also undo it and backtrack further.
@@ -543,20 +376,20 @@ impl Solver {
                             // process next component
                             if let ComponentBranch(mut last_branch) = self.assignment_stack.pop().unwrap() {
                                 //TODO if one component result is zero backtrack beyond branch: It does not work like this
-/*
-                                if *self.result_stack.last().unwrap() == 0 {
-                                    for _ in 0..=last_branch.current_component {
-                                        self.result_stack.pop();
-                                    }
-                                    self.result_stack.push(0);
-                                    self.number_unassigned_variables = last_branch.previous_number_unassigned_variables as u32;
-                                    self.number_unsat_constraints = last_branch.previous_number_unsat_constraints;
-                                    self.variable_in_scope = last_branch.previous_variables_in_scope.clone();
-                                    self.assignment_stack.pop();
-                                    continue;
-                                }
+                                /*
+                                                                if *self.result_stack.last().unwrap() == 0 {
+                                                                    for _ in 0..=last_branch.current_component {
+                                                                        self.result_stack.pop();
+                                                                    }
+                                                                    self.result_stack.push(0);
+                                                                    self.number_unassigned_variables = last_branch.previous_number_unassigned_variables as u32;
+                                                                    self.number_unsat_constraints = last_branch.previous_number_unsat_constraints;
+                                                                    self.variable_in_scope = last_branch.previous_variables_in_scope.clone();
+                                                                    self.assignment_stack.pop();
+                                                                    continue;
+                                                                }
 
- */
+                                 */
 
                                 last_branch.current_component += 1;
                                 self.number_unassigned_variables = last_branch.components.get(last_branch.current_component).unwrap().number_unassigned_variables;
@@ -598,32 +431,33 @@ impl Solver {
         }
     }
 
-    /// Checks if there are any implications and if so propagates them until there are no more implications
-    /// # Returns
-    /// true: all implications were assigned without any conflicts
-    /// false: a conflict occurred and the formula is therefore unsatisfiable
-    fn simplify(&mut self) -> bool {
-        let mut propagation_set = Vec::new();
-        for constraint in &mut self.pseudo_boolean_formula.constraints {
-            match constraint.simplify(){
-                Satisfied => {
-                    self.number_unsat_constraints -= 1;
-                },
-                Unsatisfied => {
-                    return false;
-                },
-                ImpliedLiteral(l) => {
-                    propagation_set.push((l.index, l.positive, constraint.index));
+    fn get_next_variable(&mut self) -> Option<u32> {
+        let mut counter: Vec<u64> = Vec::new();
+        for _ in 0..self.pseudo_boolean_formula.number_variables {
+            counter.push(0);
+        }
+
+
+        for constraint in &self.pseudo_boolean_formula.constraints {
+            if constraint.is_unsatisfied(){
+                for (_,literal) in &constraint.unassigned_literals {
+                    if self.variable_in_scope.contains(&(literal.index as usize)) {
+                        let tmp_res = counter.get(literal.index as usize).unwrap();
+                        counter[literal.index as usize] = tmp_res + 1;
+                    }
                 }
-                _ => {}
             }
         }
-        for (index, sign, constraint_index) in propagation_set {
-            if !self.propagate(index, sign, Propagated(constraint_index)).is_none(){
-                return false;
+
+        let mut max_index: usize = 0;
+        let mut max_value: u64 = 0;
+        for (k,v) in counter.iter().enumerate() {
+            if v > &max_value {
+                max_value = *v;
+                max_index = k;
             }
         }
-        true
+        Some(max_index as u32)
     }
 
     #[cfg(feature = "cache")]
@@ -650,6 +484,169 @@ impl Solver {
         match self.cache.get(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope)) {
             None => None,
             Some(c) => Some(*c)
+        }
+    }
+
+    #[cfg(feature = "disconnected_components")]
+    fn branch_components(&mut self) -> bool {
+        let result = self.to_disconnected_components();
+        match result {
+            Some(component_based_formula) => {
+                self.number_unsat_constraints = component_based_formula.components.get(0).unwrap().number_unsat_constraints as usize;
+                self.number_unassigned_variables = component_based_formula.components.get(0).unwrap().number_unassigned_variables;
+                self.variable_in_scope = component_based_formula.components.get(0).unwrap().variables.clone();
+                self.constraint_indexes_in_scope = component_based_formula.components.get(0).unwrap().constraint_indexes_in_scope.clone();
+                self.assignment_stack.push(ComponentBranch(component_based_formula));
+                true
+            },
+            None => {
+                false
+            }
+        }
+    }
+    #[cfg(feature = "disconnected_components")]
+    fn create_adjacency_matrix_for_connected_components(&self) -> BTreeMap<usize,BTreeSet<usize>> {
+        // create adjacency matrix connection graph
+        let mut matrix = BTreeMap::new();
+        for (i, constraint_list) in self.pseudo_boolean_formula.constraints_by_variable.iter().enumerate() {
+            let mut vector = BTreeSet::new();
+
+            if self.variable_in_scope.contains(&i) && self.assignments.get(i as usize).unwrap().is_none() {
+                for constraint_index in constraint_list {
+                    let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
+                    for variable in &constraint.literals {
+                        if let Some(v) = variable {
+                            if self.assignments.get(v.index as usize).unwrap().is_none(){
+                                vector.insert(v.index as usize);
+                            }
+                        }
+                    }
+                }
+            }
+            if vector.len() > 0 {
+                matrix.insert(i, vector);
+            }
+        }
+        matrix
+    }
+    #[cfg(feature = "disconnected_components")]
+    pub fn to_disconnected_components(&self) -> Option<ComponentBasedFormula> {
+        let mut components = Vec::new();
+        let matrix = self.create_adjacency_matrix_for_connected_components();
+        let mut already_visited: HashSet<usize> = HashSet::new();
+        for i in 0..self.pseudo_boolean_formula.number_variables {
+            let mut component = BTreeSet::new();
+
+            if self.variable_in_scope.contains(&(i as usize)) && self.assignments.get(i as usize).unwrap().is_none() && self.add_connected_constraints(&matrix, &mut component, i as usize, &mut already_visited) {
+                components.push(component);
+            }
+        }
+        if components.len() <= 1 {
+            return None;
+        }
+
+        let mut component_based_formula = ComponentBasedFormula::new(self.number_unsat_constraints, self.number_unassigned_variables, self.variable_in_scope.clone(), self.constraint_indexes_in_scope.clone());
+        for c in &components {
+            let mut component = Component{
+                variables: c.clone(),
+                number_unassigned_variables: c.len() as u32,
+                number_unsat_constraints: 0,
+                constraint_indexes_in_scope: BTreeSet::new(),
+            };
+            for v in c {
+                for ci in self.pseudo_boolean_formula.constraints_by_variable.get(*v).unwrap() {
+                    component.constraint_indexes_in_scope.insert(*ci);
+                }
+            }
+            let mut constraints = Vec::with_capacity(self.pseudo_boolean_formula.constraints.len() + self.learned_clauses.len());
+            constraints.extend((0..self.pseudo_boolean_formula.constraints.len()).map(|_| false));
+
+            for i in c {
+                let constraint_indexes = self.pseudo_boolean_formula.constraints_by_variable.get(*i).unwrap();
+                for constraint_index in constraint_indexes{
+                    constraints[*constraint_index] = true;
+                }
+            }
+
+            for (i,v) in constraints.iter().enumerate() {
+                if *v {
+                    if self.pseudo_boolean_formula.constraints.get(i).unwrap().is_unsatisfied() {
+                        component.number_unsat_constraints += 1;
+                    }
+                }
+            }
+
+            component_based_formula.components.push(component);
+        }
+
+        Some(component_based_formula)
+    }
+
+    #[cfg(feature = "disconnected_components")]
+    fn add_connected_constraints(&self, matrix: &BTreeMap<usize,BTreeSet<usize>>, component: &mut BTreeSet<usize>, variable_index: usize, visited: &mut HashSet<usize>) -> bool {
+        if visited.contains(&variable_index) {
+            return false
+        }
+        visited.insert(variable_index);
+        if let Some(vector) = matrix.get(&variable_index) {
+            for index in vector {
+                component.insert(*index);
+                self.add_connected_constraints(matrix, component, *index, visited);
+            }
+        }
+        true
+    }
+
+    #[cfg(feature = "show_progress")]
+    fn print_progress(&mut self, decision_level: u32) {
+        if decision_level < 9 {
+            let res = self.progress.get(&decision_level);
+            match res {
+                None => {
+                    self.progress.insert(decision_level, 1);
+                },
+                Some(v) => {
+                    self.progress.insert(decision_level, *v + 1);
+                }
+            }
+            for i in decision_level + 1..9{
+                self.progress.remove(&i);
+            }
+        }
+        let mut progress = 0.0;
+        for (k,v) in &self.progress {
+            progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
+        }
+        if progress != self.last_progress {
+            self.last_progress = progress;
+            println!("{progress} %");
+        }
+    }
+
+    #[cfg(feature = "clause_learning")]
+    fn safe_conflict_clause(&mut self, constraint_index: ConstraintIndex) {
+        let constraint = match constraint_index {
+            NormalConstraintIndex(i) => {
+                self.pseudo_boolean_formula.constraints.get(i).unwrap()
+            },
+            LearnedClauseIndex(i) => {
+                self.learned_clauses.get(i).unwrap()
+            }
+        };
+
+        let mut variable_index = BTreeMap::new();
+        for (index, (sign, kind, decision_level)) in &constraint.assignments {
+            //if *decision_level == self.decision_level {
+            variable_index.insert(*index, (*kind, *sign, *decision_level));
+            //}
+        }
+        if let Some(learned_constraint) = self.analyze(&mut variable_index) {
+            if let LearnedClauseIndex(constraint_index) = learned_constraint.index {
+                for (index, _) in &learned_constraint.assignments {
+                    self.learned_clauses_by_variables.get_mut(*index).unwrap().push(constraint_index);
+                }
+                self.learned_clauses.push(learned_constraint);
+            }
         }
     }
 
