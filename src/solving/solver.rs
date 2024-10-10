@@ -264,7 +264,6 @@ impl Solver {
                         #[cfg(feature = "clause_learning")]
                         self.safe_conflict_clause(constraint_index);
 
-
                         self.result_stack.push(0);
                         if !self.backtrack(){
                             //nothing to backtrack to, we searched the whole space
@@ -320,6 +319,32 @@ impl Solver {
     pub fn propagate(&mut self, variable_index: u32, variable_sign: bool, assignment_kind: AssignmentKind) -> Option<ConstraintIndex> {
         let mut propagation_queue:VecDeque<(u32, bool, AssignmentKind)> = VecDeque::new();
         propagation_queue.push_back((variable_index, variable_sign, assignment_kind));
+
+        //TODO check if the assignments should be made somewhere in the assignment stack (e.g. on max decisionlevel of the assigned literals of the constraint that implies)
+        for clause in &mut self.learned_clauses {
+            let result = clause.simplify();
+            let constraint_index = &clause.index;
+            match result {
+                Satisfied => {
+                    //self.number_unsat_constraints -= 1;
+                    //all results here
+                },
+                Unsatisfied => {
+                    //self.statistics.propagations_from_learned_clauses += 1;
+                    propagation_queue.clear();
+                    return Some(*constraint_index);
+                },
+                ImpliedLiteral(l) => {
+                    self.statistics.propagations_from_learned_clauses += 1;
+                    propagation_queue.push_back((l.index, l.positive, Propagated(*constraint_index)));
+                },
+                NothingToPropagated => {
+                },
+                AlreadySatisfied => {
+                }
+            }
+        }
+
         while !propagation_queue.is_empty() {
 
             let (index, sign,kind) = propagation_queue.pop_front().unwrap();
@@ -369,9 +394,7 @@ impl Solver {
             for constraint_index in self.learned_clauses_by_variables.get(index as usize).unwrap() {
                 let result = self.learned_clauses.get_mut(*constraint_index).unwrap().propagate(Literal{index, positive: sign, factor: 0}, kind, self.decision_level);
                 match result {
-                    Satisfied => {
-                        //self.number_unsat_constraints -= 1;
-                    },
+                    Satisfied => {},
                     Unsatisfied => {
                         //self.statistics.propagations_from_learned_clauses += 1;
                         propagation_queue.clear();
@@ -383,33 +406,6 @@ impl Solver {
                         }
 
                         propagation_queue.push_back((l.index, l.positive, Propagated(LearnedClauseIndex(*constraint_index))));
-                    },
-                    NothingToPropagated => {
-                    },
-                    AlreadySatisfied => {
-                    }
-                }
-            }
-
-            //TODO also integrate, but maybe check if the assignments should be made somewhere in the assignment stack (e.g. on max decisionlevel of the assigned literals of the constraint that implies)
-            for clause in &mut self.learned_clauses {
-                let result = clause.simplify();
-                let constraint_index = &clause.index;
-                match result {
-                    Satisfied => {
-                        //self.number_unsat_constraints -= 1;
-                        //all results here
-                    },
-                    Unsatisfied => {
-                        //self.statistics.propagations_from_learned_clauses += 1;
-                        propagation_queue.clear();
-                        return Some(*constraint_index);
-                    },
-                    ImpliedLiteral(l) => {
-                        if self.variable_in_scope.contains(&(index as usize)){
-                            self.statistics.propagations_from_learned_clauses += 1;
-                        }
-                        propagation_queue.push_back((l.index, l.positive, Propagated(*constraint_index)));
                     },
                     NothingToPropagated => {
                     },
@@ -674,7 +670,6 @@ impl Solver {
         let mut decision_node_found = false;
 
         for (index, (kind, sign, decision_level)) in conflicting_variable_indexes {
-            //println!("{} = {} @ {} - {:?}",index,sign,decision_level,kind);
             match kind {
                 Propagated(_) => {
                     reason_set_propagated[*index] = Some((*kind, *sign, *decision_level));
@@ -692,12 +687,10 @@ impl Solver {
         }
         let mut next_assignment_entry = self.assignment_stack.get(self.assignment_stack.len() - counter).unwrap();
 
-
         while number_propagated_reasons > 1 || decision_node_found && number_propagated_reasons > 0{
             match next_assignment_entry {
                 Assignment(a) => {
                     next_variable_index = a.variable_index as usize;
-                    //println!("{} = {} @ {} - {:?}",a.variable_index,a.variable_sign,a.decision_level,a.assignment_kind);
                     if !*seen.get(next_variable_index).unwrap() && !reason_set_propagated.get(a.variable_index as usize).unwrap().is_none() {
                         if let Propagated(constraint_index) = a.assignment_kind {
                             next_constraint_index = constraint_index;
@@ -717,7 +710,6 @@ impl Solver {
                                 }
                             };
                             for (index, (kind, sign, decision_level)) in new_reasons {
-                                //println!("{} = {} @ {} - {:?}",index,sign,decision_level,kind);
                                 match kind {
                                     Propagated(_) => {
                                         if !seen.get(index).unwrap() {
@@ -765,8 +757,7 @@ impl Solver {
         for _ in 0..self.pseudo_boolean_formula.number_variables {
             constraint.literals.push(None);
         }
-        //println!("decision_level conflict: {}", self.decision_level);
-        //let mut degree = 1;
+
         for (index, entry) in reason_set_propagated.iter().enumerate() {
             if let Some((a,sign,decision_level)) = entry {
                 constraint.literals[index] = Some(Literal{
@@ -776,31 +767,7 @@ impl Solver {
                 });
                 constraint.assignments.insert(index, (*sign,*a,*decision_level));
                 constraint.factor_sum += 1;
-/*
-                if let Propagated(_) = a {
-                    if !*sign {
-                        print!(" +1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                    }else {
-                        print!(" -1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                        degree -= 1;
-                    }
-                    //print!("[{} = {} @ {}], ",index,sign,decision_level)
-                }else{
-                    if !*sign {
-                        print!(" +1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                    }else {
-                        print!(" -1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                        degree -= 1;
-                    }
-                    //print!("{} = {} @ {}, ",index,sign,decision_level)
-                }
-
- */
-
-
-
             }
-
         }
         for (index, entry) in reason_set_decision.iter().enumerate() {
             if let Some((a,sign,decision_level)) = entry {
@@ -811,35 +778,10 @@ impl Solver {
                 });
                 constraint.assignments.insert(index, (*sign,*a,*decision_level));
                 constraint.factor_sum += 1;
-/*
-                if let Propagated(_) = a {
-                    if !*sign {
-                        print!(" +1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                    }else {
-                        print!(" -1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                        degree -= 1;
-                    }
-                    //print!("[{} = {} @ {}], ",index,sign,decision_level)
-                }else{
-                    if !*sign {
-                        print!(" +1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                    }else {
-                        print!(" -1 * {}",self.pseudo_boolean_formula.name_map.get_by_right(&(index as u32)).unwrap());
-                        degree -= 1;
-                    }
-                    //print!("{} = {} @ {}, ",index,sign,decision_level)
-                }
-
- */
-
-
             }
         }
-        //println!(" >= {};", degree);
         Some(constraint)
     }
-
-
 }
 
 #[derive(Clone)]
