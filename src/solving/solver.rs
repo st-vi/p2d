@@ -208,8 +208,8 @@ impl Solver {
     /// true: the variable assignment and all implications are set and no constraints were violated
     /// false: the assignment resulted in conflicting implications
     pub fn propagate(&mut self, variable_index: u32, variable_sign: bool, assignment_kind: AssignmentKind) -> Option<ConstraintIndex> {
-        let mut propagation_queue:VecDeque<(u32, bool, AssignmentKind)> = VecDeque::new();
-        propagation_queue.push_back((variable_index, variable_sign, assignment_kind));
+        let mut propagation_queue:VecDeque<(u32, bool, AssignmentKind, bool)> = VecDeque::new();
+        propagation_queue.push_back((variable_index, variable_sign, assignment_kind, false));
 
         //TODO check if the assignments should be made somewhere in the assignment stack (e.g. on max decisionlevel of the assigned literals of the constraint that implies)
         for clause in &mut self.learned_clauses {
@@ -226,8 +226,7 @@ impl Solver {
                     return Some(*constraint_index);
                 },
                 ImpliedLiteral(l) => {
-                    self.statistics.propagations_from_learned_clauses += 1;
-                    propagation_queue.push_back((l.index, l.positive, Propagated(*constraint_index)));
+                    propagation_queue.push_back((l.index, l.positive, Propagated(*constraint_index), true));
                 },
                 NothingToPropagated => {
                 },
@@ -238,7 +237,7 @@ impl Solver {
 
         while !propagation_queue.is_empty() {
 
-            let (index, sign,kind) = propagation_queue.pop_front().unwrap();
+            let (index, sign,kind, from_learned_clause) = propagation_queue.pop_front().unwrap();
             if !self.variable_in_scope.contains(&(index as usize)){
                 //not relevant for this component
                 continue;
@@ -252,6 +251,9 @@ impl Solver {
                     panic!("test");
                     //return false;
                 }
+            }
+            if from_learned_clause {
+                self.statistics.propagations_from_learned_clauses += 1;
             }
             self.number_unassigned_variables -= 1;
             self.assignment_stack.push(Assignment(VariableAssignment {
@@ -273,7 +275,7 @@ impl Solver {
                         return Some(NormalConstraintIndex(*constraint_index));
                     },
                     ImpliedLiteral(l) => {
-                        propagation_queue.push_back((l.index, l.positive, Propagated(NormalConstraintIndex(*constraint_index))));
+                        propagation_queue.push_back((l.index, l.positive, Propagated(NormalConstraintIndex(*constraint_index)),false));
                     },
                     NothingToPropagated => {
                     },
@@ -292,11 +294,7 @@ impl Solver {
                         return Some(LearnedClauseIndex(*constraint_index));
                     },
                     ImpliedLiteral(l) => {
-                        if self.variable_in_scope.contains(&(index as usize)){
-                            self.statistics.propagations_from_learned_clauses += 1;
-                        }
-
-                        propagation_queue.push_back((l.index, l.positive, Propagated(LearnedClauseIndex(*constraint_index))));
+                        propagation_queue.push_back((l.index, l.positive, Propagated(LearnedClauseIndex(*constraint_index)),true));
                     },
                     NothingToPropagated => {
                     },
@@ -352,6 +350,8 @@ impl Solver {
                             self.decision_level -= 1;
 
                             self.undo_last_assignment();
+
+                            #[cfg(feature = "cache")]
                             self.cache(r1+r2);
                         }
                     },
