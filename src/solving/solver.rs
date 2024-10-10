@@ -432,12 +432,12 @@ impl Solver {
     }
 
     fn get_next_variable(&mut self) -> Option<u32> {
-        let mut counter: Vec<u64> = Vec::new();
+        let mut counter: Vec<u32> = Vec::new();
         for _ in 0..self.pseudo_boolean_formula.number_variables {
             counter.push(0);
         }
 
-
+/*
         for constraint in &self.pseudo_boolean_formula.constraints {
             if constraint.is_unsatisfied(){
                 for (_,literal) in &constraint.unassigned_literals {
@@ -449,8 +449,38 @@ impl Solver {
             }
         }
 
+ */
+
+        for constraint_index in &self.constraint_indexes_in_scope {
+            let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
+            if constraint.is_unsatisfied() {
+                for (_,literal) in &constraint.unassigned_literals {
+                    let tmp_res = counter.get(literal.index as usize).unwrap();
+                    counter[literal.index as usize] = tmp_res + 1;
+
+                }
+            }
+        }
+
+        for variable_index in &self.variable_in_scope {
+            for constraint_index in self.learned_clauses_by_variables.get(*variable_index).unwrap() {
+                let constraint = self.learned_clauses.get(*constraint_index).unwrap();
+                if constraint.is_unsatisfied(){
+                    for (_,literal) in &constraint.unassigned_literals {
+                        let tmp_res = counter.get(literal.index as usize).unwrap();
+                        counter[literal.index as usize] = tmp_res + 1;
+
+                    }
+                }
+            }
+        }
+
+
+
+
+
         let mut max_index: usize = 0;
-        let mut max_value: u64 = 0;
+        let mut max_value: u32 = 0;
         for (k,v) in counter.iter().enumerate() {
             if v > &max_value {
                 max_value = *v;
