@@ -159,62 +159,6 @@ impl Solver {
     }
 
     fn get_next_variable(&mut self) -> Option<u32> {
-        //TODO better heuristic?
-/*
-        let mut min_number_unsat_constraint = self.number_unsat_constraints;
-        let mut index = None;
-
-        for (i, a) in self.assignments.iter().enumerate() {
-            if a.is_none() {
-                let tmp_dis = self.to_disconnected_components();
-                if let Some(d) = tmp_dis {
-                    let m = d.components.iter().map(|x| x.number_unsat_constraints).max().unwrap();
-                    if m < min_number_unsat_constraint as u32 {
-                        min_number_unsat_constraint = m as usize;
-                        index = Some(i as u32);
-                    }
-                }
-            }
-        }
-
-        if index.is_none() {
-            for constraint in &self.pseudo_boolean_formula.constraints {
-                if constraint.is_unsatisfied(){
-                    for literal in &constraint.unassigned_literals {
-                        if let Some(l) = literal {
-                            if *self.variable_in_scope.get(l.index as usize).unwrap() {
-                                return Some(l.index);
-                            }
-                        }
-                    }
-                }
-            }
-            None
-        }else{
-            index
-        }
-
- */
-
-
-
-/*
-
-        for constraint in &self.pseudo_boolean_formula.constraints {
-            if constraint.is_unsatisfied(){
-                for (_,literal) in &constraint.unassigned_literals {
-                    if *self.variable_in_scope.get(literal.index as usize).unwrap() {
-                        return Some(literal.index);
-                    }
-                }
-            }
-        }
-        None
-
-
-
- */
-
         let mut counter: Vec<u64> = Vec::new();
         for _ in 0..self.pseudo_boolean_formula.number_variables {
             counter.push(0);
