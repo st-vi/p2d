@@ -1,4 +1,6 @@
 use std::fs;
+use num_bigint::BigUint;
+use crate::partitioning::hypergraph_partitioning::partition;
 use crate::solving::pseudo_boolean_datastructure::PseudoBooleanFormula;
 use crate::solving::solver::Solver;
 
@@ -9,8 +11,13 @@ mod parsing {
 
 mod solving {
     pub mod pseudo_boolean_datastructure;
-    pub mod disconnected_component_datastructure;
     pub mod solver;
+}
+
+mod partitioning {
+    pub mod patoh_api;
+    pub mod hypergraph_partitioning;
+    pub mod disconnected_component_datastructure;
 }
 
 fn main() {
@@ -28,4 +35,6 @@ fn run_not_rec(){
     let model_count = solver.solve();
     println!("result: {}", model_count);
     println!("{:#?}", solver.statistics);
+
+
 }

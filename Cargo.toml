@@ -2,11 +2,15 @@
 name = "p2d"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 pest = "2.6"
 pest_derive = "2.6"
 bimap = "0.6"
+libc = "0.2.159"
+num-bigint = "0.4"
+num-traits = "0.2"
 
 [features]
 show_progress = []
