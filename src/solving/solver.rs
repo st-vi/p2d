@@ -184,6 +184,11 @@ impl Solver {
                 },
                 ImpliedLiteral(l) => {
                     propagation_set.push((l.index, l.positive, constraint.index));
+                },
+                ImpliedLiteralList(list) => {
+                    for l in list {
+                        propagation_set.push((l.index, l.positive, constraint.index));
+                    }
                 }
                 _ => {}
             }
@@ -247,6 +252,11 @@ impl Solver {
                 NothingToPropagated => {
                 },
                 AlreadySatisfied => {
+                },
+                ImpliedLiteralList(list) => {
+                    for l in list {
+                        propagation_queue.push_back((l.index, l.positive, Propagated(*constraint_index), true));
+                    }
                 }
             }
         }
@@ -301,6 +311,11 @@ impl Solver {
                     NothingToPropagated => {
                     },
                     AlreadySatisfied => {
+                    },
+                    ImpliedLiteralList(list) => {
+                        for l in list {
+                            propagation_queue.push_back((l.index, l.positive, Propagated(NormalConstraintIndex(*constraint_index)), false));
+                        }
                     }
                 }
             }
@@ -320,6 +335,11 @@ impl Solver {
                     NothingToPropagated => {
                     },
                     AlreadySatisfied => {
+                    },
+                    ImpliedLiteralList(list) => {
+                        for l in list {
+                            propagation_queue.push_back((l.index, l.positive, Propagated(LearnedClauseIndex(*constraint_index)), true));
+                        }
                     }
                 }
             }

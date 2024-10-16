@@ -5,7 +5,7 @@ use bimap::BiMap;
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
 use crate::parsing::equation_datastructure::EquationKind::{Eq, Le};
 use crate::solving::pseudo_boolean_datastructure::ConstraintIndex::NormalConstraintIndex;
-use crate::solving::pseudo_boolean_datastructure::PropagationResult::{AlreadySatisfied, ImpliedLiteral, NothingToPropagated, Satisfied, Unsatisfied};
+use crate::solving::pseudo_boolean_datastructure::PropagationResult::{AlreadySatisfied, ImpliedLiteral, ImpliedLiteralList, NothingToPropagated, Satisfied, Unsatisfied};
 use crate::solving::solver::AssignmentKind;
 
 #[derive(Clone,Debug,Eq, PartialEq)]
@@ -41,6 +41,7 @@ pub enum PropagationResult {
     Satisfied,
     Unsatisfied,
     ImpliedLiteral(Literal),
+    ImpliedLiteralList(Vec<Literal>),
     NothingToPropagated,
     AlreadySatisfied,
 }
@@ -171,7 +172,13 @@ impl Constraint {
                 }else if self.sum_true + self.sum_unassigned < self.degree as u32 {
                     // violated
                     return Unsatisfied
-                }else {
+                }else if self.sum_true + self.sum_unassigned == self.degree as u32 {
+                    let mut implied_literals = Vec::new();
+                    for (index, unassigned_literal) in &self.unassigned_literals {
+                        implied_literals.push(Literal{index: *index as u32, factor: unassigned_literal.factor, positive: unassigned_literal.positive});
+                    }
+                    return ImpliedLiteralList(implied_literals);
+                } else {
                     let mut max_literal_factor = 0;
                     let mut max_literal_index = 0;
                     let mut max_literal_sign = false;
@@ -224,6 +231,12 @@ impl Constraint {
         }else if self.sum_true + self.sum_unassigned < self.degree as u32 {
             // violated
             return Unsatisfied
+        }else if self.sum_true + self.sum_unassigned == self.degree as u32 {
+            let mut implied_literals = Vec::new();
+            for (index, unassigned_literal) in &self.unassigned_literals {
+                implied_literals.push(Literal{index: *index as u32, factor: unassigned_literal.factor, positive: unassigned_literal.positive});
+            }
+            return ImpliedLiteralList(implied_literals);
         }else{
             let mut max_literal_factor = 0;
             let mut max_literal_index = 0;
