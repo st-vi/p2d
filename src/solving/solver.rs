@@ -88,7 +88,7 @@ impl Solver {
         loop {
             if self.number_unsat_constraints <= 0 {
                 //current assignment satisfies all constraints
-                self.result_stack.push(BigUint::from(2_u128.pow(self.number_unassigned_variables)));
+                self.result_stack.push(BigUint::from(2 as u32).pow(self.number_unassigned_variables));
                 self.next_variables.clear();
                 if !self.backtrack(){
                     //nothing to backtrack to, we searched the whole space
@@ -227,7 +227,7 @@ impl Solver {
         propagation_queue.push_back((variable_index, variable_sign, assignment_kind, false));
 
         //TODO check if the assignments should be made somewhere in the assignment stack (e.g. on max decisionlevel of the assigned literals of the constraint that implies)
-        /*
+
         for clause in &mut self.learned_clauses {
             let result = clause.simplify();
             let constraint_index = &clause.index;
@@ -250,7 +250,11 @@ impl Solver {
                 }
             }
         }
-         */
+
+
+
+
+
 
         while !propagation_queue.is_empty() {
 
@@ -646,42 +650,42 @@ impl Solver {
         let mut current_constraint_index = 0;
         let mut single_variables = BTreeSet::new();
         x_pins.push(0);
-        for (variable_index, constraint_indexes) in self.pseudo_boolean_formula.constraints_by_variable.iter().enumerate() {
-            if self.assignments.get(variable_index).unwrap().is_none() {
-                if self.variable_in_scope.contains(&variable_index) {
-                    let mut tmp_constraint_indexes = Vec::new();
-                    for constraint_index in constraint_indexes {
-                        let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-                        if constraint.is_unsatisfied() {
-                            if let NormalConstraintIndex(index) = constraint.index {
-                                tmp_constraint_indexes.push(index);
-                            }
 
+        for variable_in_scope in &self.variable_in_scope {
+            if self.assignments.get(*variable_in_scope).unwrap().is_none() {
+                let mut tmp_constraint_indexes = Vec::new();
+                for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(*variable_in_scope).unwrap() {
+                    let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
+                    if constraint.is_unsatisfied() {
+                        if let NormalConstraintIndex(index) = constraint.index {
+                            tmp_constraint_indexes.push(index);
                         }
+
                     }
-                    if tmp_constraint_indexes.len() > 0 {
-                        variable_index_map.insert(current_variable_index, variable_index);
-                        variable_index_map_reverse.insert(variable_index, current_variable_index);
-                        current_variable_index += 1;
-                        for constraint_index in tmp_constraint_indexes {
-                            let index =
-                                if constraint_index_map_reverse.contains_key(&constraint_index) {
-                                    *constraint_index_map_reverse.get(&constraint_index).unwrap()
-                                } else {
-                                    constraint_index_map.insert(current_constraint_index, constraint_index);
-                                    constraint_index_map_reverse.insert(constraint_index, current_constraint_index);
-                                    current_constraint_index += 1;
-                                    current_constraint_index - 1
-                                };
-                            pins.push(index);
-                        }
-                        x_pins.push(pins.len());
-                    }else{
-                        single_variables.insert(variable_index);
+                }
+                if tmp_constraint_indexes.len() > 0 {
+                    variable_index_map.insert(current_variable_index, variable_in_scope);
+                    variable_index_map_reverse.insert(variable_in_scope, current_variable_index);
+                    current_variable_index += 1;
+                    for constraint_index in tmp_constraint_indexes {
+                        let index =
+                            if constraint_index_map_reverse.contains_key(&constraint_index) {
+                                *constraint_index_map_reverse.get(&constraint_index).unwrap()
+                            } else {
+                                constraint_index_map.insert(current_constraint_index, constraint_index);
+                                constraint_index_map_reverse.insert(constraint_index, current_constraint_index);
+                                current_constraint_index += 1;
+                                current_constraint_index - 1
+                            };
+                        pins.push(index);
                     }
+                    x_pins.push(pins.len());
+                }else{
+                    single_variables.insert(variable_in_scope);
                 }
             }
         }
+
         let mut current_partition_label = 0;
         let mut partvec = Vec::new();
         for _ in 0..current_constraint_index {
@@ -724,16 +728,21 @@ impl Solver {
 
         if current_partition_label == 0 && single_variables.len() == 0{
 
+
             if self.next_variables.is_empty() {
-/*
+
                 let (cut, partvec, edges_to_remove) = partition(current_constraint_index, current_variable_index, pins, x_pins);
 
                 self.next_variables.clear();
                 for e in edges_to_remove {
-                    self.next_variables.push(*variable_index_map.get(&e).unwrap() as u32);
+                    self.next_variables.push(**variable_index_map.get(&e).unwrap() as u32);
                 }
-*/
-            }
+
+
+
+           }
+
+
 
 
             return None;
@@ -781,7 +790,7 @@ impl Solver {
                     constraint_indexes_in_scope: BTreeSet::new(),
                 };
                 for variable_index in single_variables {
-                    component.variables.insert(variable_index);
+                    component.variables.insert(*variable_index);
                     component.number_unassigned_variables += 1;
 
                 }
