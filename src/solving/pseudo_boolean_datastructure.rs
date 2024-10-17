@@ -357,6 +357,7 @@ impl Constraint {
             let mut s = DefaultHasher::new();
             self.degree.hash(&mut s);
             self.unassigned_literals.hash(&mut s);
+            self.sum_true.hash(&mut s);
             s.finish()
         }else{
             self.hash_value
