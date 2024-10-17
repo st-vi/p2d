@@ -708,6 +708,9 @@ impl Solver {
 
         let mut current_partition_label = 0;
         let mut partvec = Vec::new();
+        if current_constraint_index == 0 {
+            return None;
+        }
         for _ in 0..current_constraint_index {
             partvec.push(None);
         }
@@ -716,6 +719,9 @@ impl Solver {
         loop {
             while !to_visit.is_empty() {
                 let mut constraint_index = to_visit.pop().unwrap();
+                if constraint_index as usize >= partvec.len() {
+                    println!("test");
+                }
                 if let Some(label) = partvec.get(constraint_index as usize).unwrap(){
                     if *label != current_partition_label {
                         println!("test");
