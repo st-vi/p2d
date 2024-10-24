@@ -6,6 +6,7 @@ use crate::partitioning::disconnected_component_datastructure::{Component, Compo
 use crate::partitioning::hypergraph_partitioning::partition;
 use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, ConstraintIndex, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::ConstraintIndex::{LearnedClauseIndex, NormalConstraintIndex};
+use crate::solving::pseudo_boolean_datastructure::ConstraintType::GreaterEqual;
 use crate::solving::pseudo_boolean_datastructure::PropagationResult::*;
 use crate::solving::solver::AssignmentKind::{FirstDecision, Propagated, SecondDecision};
 use crate::solving::solver::AssignmentStackEntry::{Assignment, ComponentBranch};
@@ -377,10 +378,7 @@ impl Solver {
                             if let Some(constraint_index) = self.propagate(index, new_sign, SecondDecision) {
                                 #[cfg(feature = "clause_learning")]
                                 self.safe_conflict_clause(constraint_index);
-
                                 self.result_stack.push(BigUint::zero());
-                                self.next_variables.clear();
-                                self.undo_last_assignment();
 
                             }else{
                                 return true;
