@@ -5,7 +5,7 @@ var_name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "/" | "+")* }
 first_literal = {factor_sign? ~ (factor_value ~ "*"?)? ~ var_name }
 implicit_one_literal = {factor_sign ~ var_name }
 literal = {factor_sign ~ factor_value ~ "*"? ~ var_name }
-equation_kind = { "=" | "<=" | ">=" }
+equation_kind = { "=" | "<=" | ">=" | "<" | ">" | "!=" }
 equation_side = { first_literal ~ (literal | implicit_one_literal)* }
 right_hand_side = { factor_sign? ~ factor_value }
 equation = {equation_side ~ equation_kind ~ right_hand_side ~ ";"?}

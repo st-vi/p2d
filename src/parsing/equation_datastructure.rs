@@ -26,7 +26,10 @@ pub struct Equation {
 pub enum EquationKind {
     Eq,
     Ge,
-    Le
+    Le,
+    G,
+    L,
+    NotEq
 }
 
 #[derive(Clone)]

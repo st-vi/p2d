@@ -1018,6 +1018,7 @@ impl Solver {
             factor_sum: 0,
             hash_value: 0,
             hash_value_old: true,
+            constraint_type: GreaterEqual
         };
         for _ in 0..self.pseudo_boolean_formula.number_variables {
             constraint.literals.push(None);

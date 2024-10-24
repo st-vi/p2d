@@ -3,8 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use bimap::BiMap;
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
-use crate::parsing::equation_datastructure::EquationKind::{Eq, Le};
+use crate::parsing::equation_datastructure::EquationKind::{Eq, Le, G, L};
 use crate::solving::pseudo_boolean_datastructure::ConstraintIndex::NormalConstraintIndex;
+use crate::solving::pseudo_boolean_datastructure::ConstraintType::{GreaterEqual, NotEqual};
 use crate::solving::pseudo_boolean_datastructure::PropagationResult::{AlreadySatisfied, ImpliedLiteral, ImpliedLiteralList, NothingToPropagated, Satisfied, Unsatisfied};
 use crate::solving::solver::AssignmentKind;
 
@@ -27,7 +28,22 @@ pub struct Constraint {
     pub factor_sum: u32,
     pub hash_value: u64,
     pub hash_value_old: bool,
+    pub constraint_type: ConstraintType,
     //TODO cashe sum of max literal and update when necessary instead of calculating every time
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum ConstraintType {
+    GreaterEqual,
+    NotEqual
+}
+
+fn get_constraint_type_from_equation(equation: &Equation) -> ConstraintType {
+    match equation.kind {
+        EquationKind::Ge => GreaterEqual,
+        EquationKind::NotEq => NotEqual,
+        _ => panic!("{:?} must be removed before creating a pseudo boolean constraint", equation.kind)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -68,6 +84,8 @@ impl PseudoBooleanFormula {
     pub fn new(opb_file: &OPBFile) -> PseudoBooleanFormula {
         let mut equation_list: Vec<Equation> = opb_file.equations.iter().flat_map(|x| replace_equal_equations(x)).collect();
         equation_list = equation_list.iter().map(|x| replace_le_equations(x)).collect();
+        equation_list = equation_list.iter().map(|x| replace_l_equations(x)).collect();
+        equation_list = equation_list.iter().map(|x| replace_g_equations(x)).collect();
         equation_list = equation_list.iter().map(|x| replace_negative_factors(x)).collect();
         equation_list.iter()
             .for_each(|e|
@@ -90,7 +108,7 @@ impl PseudoBooleanFormula {
         let mut constraint_counter = 0;
         for equation in equation_list {
             let mut constraint = Constraint {
-                degree: if equation.rhs < 0 {0}else{equation.rhs},
+                degree: equation.rhs,
                 sum_true: 0,
                 sum_unassigned: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32,
                 literals: Vec::with_capacity((opb_file.max_name_index - 1) as usize),
@@ -99,7 +117,8 @@ impl PseudoBooleanFormula {
                 factor_sum: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32,
                 index: NormalConstraintIndex(constraint_counter),
                 hash_value: 0,
-                hash_value_old: true
+                hash_value_old: true,
+                constraint_type: get_constraint_type_from_equation(&equation),
             };
             for _ in 0..opb_file.max_name_index{
                 constraint.literals.push(None);
@@ -141,7 +160,7 @@ impl Constraint {
         }
 
          */
-        let already_satisfied =  self.sum_true >= self.degree as u32;
+        let already_satisfied =  if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u32 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u32};
         let literal_in_constraint = self.literals.get(literal.index as usize).unwrap();
         match literal_in_constraint {
             None => {
@@ -161,6 +180,21 @@ impl Constraint {
                     self.assignments.insert(literal.index as usize, (literal.positive, assignment_kind, decision_level));
                 }
                 self.hash_value_old = true;
+                if self.constraint_type == NotEqual {
+                    if self.sum_unassigned == 0 && self.sum_true != self.degree as u32 {
+                        // fulfilled
+                        return if already_satisfied {
+                            AlreadySatisfied
+                        } else {
+                            Satisfied
+                        }
+                    }else if self.sum_unassigned == 0 && self.sum_true == self.degree as u32 {
+                        // violated
+                        return Unsatisfied
+                    }else {
+                        return NothingToPropagated
+                    }
+                }
                 if self.sum_true >= self.degree as u32 {
                     // fulfilled
                     return if already_satisfied {
@@ -206,14 +240,14 @@ impl Constraint {
         if self.assignments.contains_key(&(variable_index as usize)) {
             if let Some(literal) = self.literals.get(variable_index as usize).unwrap() {
 
-                let satisfied_before_undo = self.sum_true >= self.degree as u32;
+                let satisfied_before_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u32 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u32};
                 self.unassigned_literals.insert(literal.index as usize, literal.clone());
                 self.assignments.remove(&(variable_index as usize));
                 self.sum_unassigned += literal.factor;
                 if literal.positive == variable_sign {
                     self.sum_true -= literal.factor;
                 }
-                let satisfied_after_undo = self.sum_true >= self.degree as u32;
+                let satisfied_after_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u32 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u32};
                 self.hash_value_old = true;
                 if satisfied_before_undo && !satisfied_after_undo {
                     return true;
@@ -225,6 +259,18 @@ impl Constraint {
     }
 
     pub fn simplify(&mut self) -> PropagationResult {
+        if self.constraint_type == NotEqual {
+            if self.sum_unassigned == 0 && self.sum_true != self.degree as u32 {
+                // fulfilled
+                return Satisfied
+            }else if self.sum_unassigned == 0 && self.sum_true == self.degree as u32 {
+                // violated
+                return Unsatisfied
+            }else {
+                return NothingToPropagated
+            }
+        }
+
         if self.sum_true >= self.degree as u32 {
             // fulfilled
                 return Satisfied
@@ -261,7 +307,11 @@ impl Constraint {
     }
 
     pub fn is_unsatisfied(&self) -> bool {
-        self.sum_true < self.degree as u32
+        if self.constraint_type == GreaterEqual {
+            self.sum_true < self.degree as u32
+        } else {
+            self.sum_unassigned != 0 || self.sum_true == self.degree as u32
+        }
     }
 
     pub fn calculate_reason(&self, propagated_variable_index: usize) -> BTreeMap<usize, (AssignmentKind,bool,u32)> {
@@ -302,6 +352,33 @@ fn replace_le_equations(equation: &Equation) -> Equation {
             kind: EquationKind::Ge
         };
         e.lhs = e.lhs.iter().map(|s| Summand{variable_index: s.variable_index, factor: -1 * s.factor, positive: s.positive}).collect();
+        e
+    } else {
+        equation.clone()
+    }
+}
+
+fn replace_l_equations(equation: &Equation) -> Equation {
+    if equation.kind == L {
+        let mut e = Equation{
+            lhs: equation.lhs.clone(),
+            rhs: -1* equation.rhs,
+            kind: EquationKind::G
+        };
+        e.lhs = e.lhs.iter().map(|s| Summand{variable_index: s.variable_index, factor: -1 * s.factor, positive: s.positive}).collect();
+        e
+    } else {
+        equation.clone()
+    }
+}
+
+fn replace_g_equations(equation: &Equation) -> Equation {
+    if equation.kind == G {
+        let mut e = Equation{
+            lhs: equation.lhs.clone(),
+            rhs: equation.rhs + 1,
+            kind: EquationKind::Ge
+        };
         e
     } else {
         equation.clone()
@@ -356,6 +433,7 @@ impl Constraint {
         if self.hash_value_old {
             let mut s = DefaultHasher::new();
             self.degree.hash(&mut s);
+            self.constraint_type.hash(&mut s);
             self.unassigned_literals.hash(&mut s);
             self.sum_true.hash(&mut s);
             s.finish()

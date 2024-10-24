@@ -164,6 +164,9 @@ fn parse_equation_kind(rule: Pair<Rule>) -> Result<EquationKind, String> {
         "=" => Ok(EquationKind::Eq),
         "<=" => Ok(EquationKind::Le),
         ">=" => Ok(EquationKind::Ge),
+        "<" => Ok(EquationKind::L),
+        ">" => Ok(EquationKind::G),
+        "!=" => Ok(EquationKind::NotEq),
         _ => Err(format!("Parsing error! {} is not an equation kind!", rule.as_str()))
     }
 }
