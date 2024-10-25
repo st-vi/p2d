@@ -132,9 +132,9 @@ fn parse_summand(rule: Pair<Rule>, opb_file: &mut OPBFile) -> Result<Summand, St
     }
 }
 
-fn parse_right_hand_side(rule: Pair<Rule>) -> Result<i32, String> {
-    let mut value: Option<i32> = None;
-    let mut sign:  i32 = 1;
+fn parse_right_hand_side(rule: Pair<Rule>) -> Result<i128, String> {
+    let mut value: Option<i128> = None;
+    let mut sign = 1;
 
     let rhs_string = rule.as_str();
 

@@ -21,11 +21,11 @@ pub struct Constraint {
     pub index: ConstraintIndex,
     pub literals: Vec<Option<Literal>>,
     pub unassigned_literals: BTreeMap<usize, Literal>,
-    pub degree: i32,
-    pub sum_true: u32,
-    pub sum_unassigned: u32,
+    pub degree: i128,
+    pub sum_true: u128,
+    pub sum_unassigned: u128,
     pub assignments: BTreeMap<usize, (bool,AssignmentKind,u32)>,
-    pub factor_sum: u32,
+    pub factor_sum: u128,
     pub hash_value: u64,
     pub hash_value_old: bool,
     pub constraint_type: ConstraintType,
@@ -49,7 +49,7 @@ fn get_constraint_type_from_equation(equation: &Equation) -> ConstraintType {
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Literal {
     pub index: u32,
-    pub factor: u32,
+    pub factor: u128,
     pub positive: bool
 }
 
@@ -108,13 +108,13 @@ impl PseudoBooleanFormula {
         let mut constraint_counter = 0;
         for equation in equation_list {
             let mut constraint = Constraint {
-                degree: equation.rhs,
+                degree: if equation.rhs < 0 {0} else {equation.rhs},
                 sum_true: 0,
-                sum_unassigned: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32,
+                sum_unassigned: equation.lhs.iter().map(|s| s.factor).sum::<i128>() as u128,
                 literals: Vec::with_capacity((opb_file.max_name_index - 1) as usize),
                 unassigned_literals: BTreeMap::new(),
                 assignments: BTreeMap::new(),
-                factor_sum: equation.lhs.iter().map(|s| s.factor).sum::<i32>() as u32,
+                factor_sum: equation.lhs.iter().map(|s| s.factor).sum::<i128>() as u128,
                 index: NormalConstraintIndex(constraint_counter),
                 hash_value: 0,
                 hash_value_old: true,
@@ -126,11 +126,11 @@ impl PseudoBooleanFormula {
             for summand in equation.lhs {
                 constraint.literals[summand.variable_index as usize] = Some(Literal{
                     index: summand.variable_index,
-                    factor: summand.factor as u32,
+                    factor: summand.factor as u128,
                     positive: summand.positive});
                 constraint.unassigned_literals.insert(summand.variable_index as usize, Literal{
                     index: summand.variable_index,
-                    factor: summand.factor as u32,
+                    factor: summand.factor as u128,
                     positive: summand.positive});
                 pseudo_boolean_formula.constraints_by_variable.get_mut(summand.variable_index as usize).unwrap().push(constraint_counter as usize);
             }
@@ -160,7 +160,7 @@ impl Constraint {
         }
 
          */
-        let already_satisfied =  if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u32 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u32};
+        let already_satisfied =  if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
         let literal_in_constraint = self.literals.get(literal.index as usize).unwrap();
         match literal_in_constraint {
             None => {
@@ -181,21 +181,21 @@ impl Constraint {
                 }
                 self.hash_value_old = true;
                 if self.constraint_type == NotEqual {
-                    if self.sum_unassigned == 0 && self.sum_true != self.degree as u32 {
+                    if self.sum_unassigned == 0 && self.sum_true != self.degree as u128 {
                         // fulfilled
                         return if already_satisfied {
                             AlreadySatisfied
                         } else {
                             Satisfied
                         }
-                    }else if self.sum_unassigned == 0 && self.sum_true == self.degree as u32 {
+                    }else if self.sum_unassigned == 0 && self.sum_true == self.degree as u128 {
                         // violated
                         return Unsatisfied
                     }else {
                         return NothingToPropagated
                     }
                 }
-                if self.sum_true >= self.degree as u32 {
+                if self.sum_true >= self.degree as u128 {
                     // fulfilled
                     return if already_satisfied {
                         AlreadySatisfied
@@ -203,10 +203,10 @@ impl Constraint {
                         Satisfied
                     }
 
-                }else if self.sum_true + self.sum_unassigned < self.degree as u32 {
+                }else if self.sum_true + self.sum_unassigned < self.degree as u128 {
                     // violated
                     return Unsatisfied
-                }else if self.sum_true + self.sum_unassigned == self.degree as u32 {
+                }else if self.sum_true + self.sum_unassigned == self.degree as u128 {
                     let mut implied_literals = Vec::new();
                     for (index, unassigned_literal) in &self.unassigned_literals {
                         implied_literals.push(Literal{index: *index as u32, factor: unassigned_literal.factor, positive: unassigned_literal.positive});
@@ -224,7 +224,7 @@ impl Constraint {
                         }
 
                     }
-                    if self.sum_true + self.sum_unassigned < (self.degree as u32) + max_literal_factor {
+                    if self.sum_true + self.sum_unassigned < (self.degree as u128) + max_literal_factor {
                         //max literal implied
                         let return_value = ImpliedLiteral(Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign});
                         return return_value;
@@ -240,14 +240,14 @@ impl Constraint {
         if self.assignments.contains_key(&(variable_index as usize)) {
             if let Some(literal) = self.literals.get(variable_index as usize).unwrap() {
 
-                let satisfied_before_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u32 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u32};
+                let satisfied_before_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
                 self.unassigned_literals.insert(literal.index as usize, literal.clone());
                 self.assignments.remove(&(variable_index as usize));
                 self.sum_unassigned += literal.factor;
                 if literal.positive == variable_sign {
                     self.sum_true -= literal.factor;
                 }
-                let satisfied_after_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u32 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u32};
+                let satisfied_after_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
                 self.hash_value_old = true;
                 if satisfied_before_undo && !satisfied_after_undo {
                     return true;
@@ -260,10 +260,10 @@ impl Constraint {
 
     pub fn simplify(&mut self) -> PropagationResult {
         if self.constraint_type == NotEqual {
-            if self.sum_unassigned == 0 && self.sum_true != self.degree as u32 {
+            if self.sum_unassigned == 0 && self.sum_true != self.degree as u128 {
                 // fulfilled
                 return Satisfied
-            }else if self.sum_unassigned == 0 && self.sum_true == self.degree as u32 {
+            }else if self.sum_unassigned == 0 && self.sum_true == self.degree as u128 {
                 // violated
                 return Unsatisfied
             }else {
@@ -271,13 +271,13 @@ impl Constraint {
             }
         }
 
-        if self.sum_true >= self.degree as u32 {
+        if self.sum_true >= self.degree as u128 {
             // fulfilled
                 return Satisfied
-        }else if self.sum_true + self.sum_unassigned < self.degree as u32 {
+        }else if self.sum_true + self.sum_unassigned < self.degree as u128 {
             // violated
             return Unsatisfied
-        }else if self.sum_true + self.sum_unassigned == self.degree as u32 {
+        }else if self.sum_true + self.sum_unassigned == self.degree as u128 {
             let mut implied_literals = Vec::new();
             for (index, unassigned_literal) in &self.unassigned_literals {
                 implied_literals.push(Literal{index: *index as u32, factor: unassigned_literal.factor, positive: unassigned_literal.positive});
@@ -297,7 +297,7 @@ impl Constraint {
             if max_literal_factor == 0{
                 println!("test");
             }
-            if self.sum_true + self.sum_unassigned < (self.degree as u32) + max_literal_factor {
+            if self.sum_true + self.sum_unassigned < (self.degree as u128) + max_literal_factor {
                 //max literal implied
                 let return_value = ImpliedLiteral(Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign});
                 return return_value;
@@ -308,9 +308,9 @@ impl Constraint {
 
     pub fn is_unsatisfied(&self) -> bool {
         if self.constraint_type == GreaterEqual {
-            self.sum_true < self.degree as u32
+            self.sum_true < self.degree as u128
         } else {
-            self.sum_unassigned != 0 || self.sum_true == self.degree as u32
+            self.sum_unassigned != 0 || self.sum_true == self.degree as u128
         }
     }
 

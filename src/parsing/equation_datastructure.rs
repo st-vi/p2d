@@ -18,7 +18,7 @@ impl OPBFile {
 #[derive(Clone)]
 pub struct Equation {
     pub lhs: Vec<Summand>,
-    pub rhs: i32,
+    pub rhs: i128,
     pub kind: EquationKind
 }
 
@@ -35,7 +35,7 @@ pub enum EquationKind {
 #[derive(Clone)]
 pub struct Summand {
     pub variable_index: u32,
-    pub factor: i32,
+    pub factor: i128,
     pub positive: bool
 }
 
