@@ -9,4 +9,7 @@ equation_kind = { "=" | "<=" | ">=" | "<" | ">" | "!=" }
 equation_side = { first_literal ~ (literal | implicit_one_literal)* }
 right_hand_side = { factor_sign? ~ factor_value }
 equation = {equation_side ~ equation_kind ~ right_hand_side ~ ";"?}
-opb_file = { SOI ~ (NEWLINE | ("*" ~ (!NEWLINE ~ ANY)* ~ NEWLINE))* ~ equation ~ (NEWLINE+ ~ equation)* ~ NEWLINE* ~ EOI }
+header = {"#variable=" ~ number_variables ~ "#constraint=" ~ number_constraints ~ NEWLINE}
+number_variables = { ASCII_DIGIT+ }
+number_constraints = { ASCII_DIGIT+ }
+opb_file = { SOI ~ (NEWLINE | ("*" ~ (!NEWLINE ~ ANY)* ~ NEWLINE))* ~ header ~ equation ~ (NEWLINE+ ~ equation)* ~ NEWLINE* ~ EOI }
