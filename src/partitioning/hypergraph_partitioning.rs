@@ -89,6 +89,8 @@ pub fn partition(number_vertices: u32, number_nets: u32, nets: Vec<u32>, x_pins:
             PATOH_SUGPARAM_QUALITY as c_int
         );
 
+        args.seed = 1;
+
         PaToH_Alloc(
             &mut args,
             c,
