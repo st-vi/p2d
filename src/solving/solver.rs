@@ -120,11 +120,14 @@ impl Solver {
 
             #[cfg(feature = "disconnected_components")]
             {
+
                 if self.branch_components() {
                     continue;
                 }
-                //if self.decision_level < 8 || self.decision_level % 4 == 1 {
-                /*
+
+/*
+                if self.decision_level < 8 || self.decision_level % 4 == 1 {
+
                     if let Some(assignment_entry) = self.assignment_stack.last() {
                         match assignment_entry {
                             ComponentBranch(_) => {},
@@ -140,8 +143,10 @@ impl Solver {
                         }
                     }
 
-                 */
-                //}
+
+                }
+
+ */
             }
 
             let decided_literal = self.decide();
@@ -640,32 +645,6 @@ impl Solver {
             }
         }
     }
-    #[cfg(feature = "disconnected_components")]
-    fn create_adjacency_matrix_for_connected_components(&self) -> BTreeMap<usize,BTreeSet<usize>> {
-        // create adjacency matrix connection graph
-        let mut matrix = BTreeMap::new();
-        for (i, constraint_list) in self.pseudo_boolean_formula.constraints_by_variable.iter().enumerate() {
-            let mut vector = BTreeSet::new();
-
-            if self.variable_in_scope.contains(&i) && self.assignments.get(i as usize).unwrap().is_none() {
-                for constraint_index in constraint_list {
-                    let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-                    for variable in &constraint.literals {
-                        if let Some(v) = variable {
-                            if self.assignments.get(v.index as usize).unwrap().is_none(){
-                                vector.insert(v.index as usize);
-                            }
-                        }
-                    }
-                }
-            }
-            if vector.len() > 0 {
-                matrix.insert(i, vector);
-            }
-        }
-        matrix
-    }
-
 
     #[cfg(feature = "disconnected_components")]
     pub fn to_disconnected_components(&mut self) -> Option<ComponentBasedFormula> {
@@ -673,11 +652,11 @@ impl Solver {
         let mut pins = Vec::new();
         let mut x_pins = Vec::new();
         //hg index to FM index
-        let mut variable_index_map = BTreeMap::new();
+        let mut variable_index_map = Vec::new();
         let mut variable_index_map_reverse = BTreeMap::new();
         let mut current_variable_index = 0;
         //hg index to FM index
-        let mut constraint_index_map = BTreeMap::new();
+        let mut constraint_index_map = Vec::new();
         let mut constraint_index_map_reverse: BTreeMap<usize, u32> = BTreeMap::new();
         let mut current_constraint_index = 0;
         let mut single_variables = BTreeSet::new();
@@ -696,19 +675,23 @@ impl Solver {
                     }
                 }
                 if tmp_constraint_indexes.len() > 0 {
-                    variable_index_map.insert(current_variable_index, variable_in_scope);
+                    variable_index_map.push(variable_in_scope);
                     variable_index_map_reverse.insert(variable_in_scope, current_variable_index);
                     current_variable_index += 1;
                     for constraint_index in tmp_constraint_indexes {
                         let index =
-                            if constraint_index_map_reverse.contains_key(&constraint_index) {
-                                *constraint_index_map_reverse.get(&constraint_index).unwrap()
-                            } else {
-                                constraint_index_map.insert(current_constraint_index, constraint_index);
-                                constraint_index_map_reverse.insert(constraint_index, current_constraint_index);
-                                current_constraint_index += 1;
-                                current_constraint_index - 1
+                            match constraint_index_map_reverse.get(&constraint_index) {
+                                Some(v) => {
+                                    *v
+                                },
+                                None => {
+                                    constraint_index_map.push(constraint_index);
+                                    constraint_index_map_reverse.insert(constraint_index, current_constraint_index as u32);
+                                    current_constraint_index += 1;
+                                    (current_constraint_index - 1) as u32
+                                }
                             };
+
                         pins.push(index);
                     }
                     x_pins.push(pins.len());
@@ -742,7 +725,7 @@ impl Solver {
                 }
 
                 partvec[constraint_index as usize] = Some(current_partition_label);
-                let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index_map.get(&constraint_index).unwrap()).unwrap();
+                let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index_map.get(constraint_index as usize).unwrap()).unwrap();
                 for (index, _) in &constraint.unassigned_literals {
                     for i in *x_pins.get(*variable_index_map_reverse.get(index).unwrap() as usize).unwrap()..*x_pins.get(*variable_index_map_reverse.get(index).unwrap() as usize + 1).unwrap() {
                         to_visit.push(*pins.get(i).unwrap());
@@ -769,11 +752,11 @@ impl Solver {
 
             if self.next_variables.is_empty() {
 
-                let (cut, partvec, edges_to_remove) = partition(current_constraint_index, current_variable_index, pins, x_pins);
+                let (cut, partvec, edges_to_remove) = partition(current_constraint_index as u32, current_variable_index as u32, pins, x_pins);
 
                 self.next_variables.clear();
                 for e in edges_to_remove {
-                    self.next_variables.push(**variable_index_map.get(&e).unwrap() as u32);
+                    self.next_variables.push(**variable_index_map.get(e as usize).unwrap() as u32);
                 }
 
 
@@ -806,7 +789,7 @@ impl Solver {
                 })
             }
             for (index, partition_number) in partvec.iter().enumerate() {
-                let constraint_index = constraint_index_map.get(&(index as u32)).unwrap();
+                let constraint_index = constraint_index_map.get(index).unwrap();
                 let component = component_based_formula.components.get_mut(*partition_number as usize).unwrap();
                 component.constraint_indexes_in_scope.insert(*constraint_index);
                 let mut constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
@@ -1026,7 +1009,7 @@ impl Solver {
             assignments: BTreeMap::new(),
             index: LearnedClauseIndex(self.learned_clauses.len()),
             unassigned_literals: BTreeMap::new(),
-            literals: Vec::new(),
+            literals: BTreeMap::new(),
             sum_true: 0,
             sum_unassigned: 0,
             degree: 1,
@@ -1035,13 +1018,10 @@ impl Solver {
             hash_value_old: true,
             constraint_type: GreaterEqual
         };
-        for _ in 0..self.pseudo_boolean_formula.number_variables {
-            constraint.literals.push(None);
-        }
 
         for (index, entry) in reason_set_propagated.iter().enumerate() {
             if let Some((a,sign,decision_level)) = entry {
-                constraint.literals[index] = Some(Literal{
+                constraint.literals.insert(index, Literal{
                     index: index as u32,
                     positive: !*sign,
                     factor: 1,
@@ -1052,7 +1032,7 @@ impl Solver {
         }
         for (index, entry) in reason_set_decision.iter().enumerate() {
             if let Some((a,sign,decision_level)) = entry {
-                constraint.literals[index] = Some(Literal{
+                constraint.literals.insert(index, Literal{
                     index: index as u32,
                     positive: !*sign,
                     factor: 1,

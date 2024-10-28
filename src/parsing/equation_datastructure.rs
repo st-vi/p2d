@@ -3,7 +3,9 @@ use bimap::{BiHashMap, BiMap};
 pub struct OPBFile {
     pub name_map: BiMap<String, u32>,
     pub equations: Vec<Equation>,
-    pub max_name_index: u32
+    pub max_name_index: u32,
+    pub number_constraints: usize,
+    pub number_variables: usize,
 }
 
 impl OPBFile {
@@ -11,7 +13,9 @@ impl OPBFile {
         OPBFile {
             name_map: BiHashMap::new(),
             equations: Vec::new(),
-            max_name_index: 0
+            max_name_index: 0,
+            number_constraints: 0,
+            number_variables: 0,
         }
     }
 }

@@ -39,12 +39,30 @@ fn parse_opb_file(rule: Pair<Rule>) -> Result<OPBFile, String> {
                     },
                     Err(e) => return Err(e)
                 }
+            },
+            Rule::header=> {
+                parse_header(inner_rule, &mut opb_file);
             }
             Rule::EOI => (),
             _ => return Err(format!("Parsing error! {} is not part of a valid opb file", inner_rule.as_str()))
         }
     }
     Ok(opb_file)
+}
+
+fn parse_header(rule: Pair<Rule>, opb_file: &mut OPBFile) {
+    for inner_rule in rule.into_inner(){
+        match inner_rule.as_rule() {
+            Rule::number_variables=> {
+                opb_file.number_variables = inner_rule.as_str().trim().parse().unwrap();
+            },
+            Rule::number_constraints => {
+                opb_file.number_constraints = inner_rule.as_str().trim().parse().unwrap();
+            },
+            _ => ()
+        }
+    }
+
 }
 
 fn parse_equation(rule: Pair<Rule>, opb_file: &mut OPBFile) -> Result<Equation, String> {

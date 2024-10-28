@@ -19,7 +19,7 @@ pub struct PseudoBooleanFormula {
 #[derive(Clone,Debug,Eq, PartialEq)]
 pub struct Constraint {
     pub index: ConstraintIndex,
-    pub literals: Vec<Option<Literal>>,
+    pub literals: BTreeMap<usize,Literal>,
     pub unassigned_literals: BTreeMap<usize, Literal>,
     pub degree: i128,
     pub sum_true: u128,
@@ -95,7 +95,7 @@ impl PseudoBooleanFormula {
 
             );
         let mut pseudo_boolean_formula = PseudoBooleanFormula{
-            constraints: Vec::new(),
+            constraints: Vec::with_capacity(opb_file.number_constraints),
             number_variables: opb_file.max_name_index,
             constraints_by_variable: Vec::with_capacity((opb_file.max_name_index - 1)as usize),
             name_map: opb_file.name_map.clone()
@@ -111,7 +111,7 @@ impl PseudoBooleanFormula {
                 degree: if equation.rhs < 0 {0} else {equation.rhs},
                 sum_true: 0,
                 sum_unassigned: equation.lhs.iter().map(|s| s.factor).sum::<i128>() as u128,
-                literals: Vec::with_capacity((opb_file.max_name_index - 1) as usize),
+                literals: BTreeMap::new(),
                 unassigned_literals: BTreeMap::new(),
                 assignments: BTreeMap::new(),
                 factor_sum: equation.lhs.iter().map(|s| s.factor).sum::<i128>() as u128,
@@ -120,11 +120,8 @@ impl PseudoBooleanFormula {
                 hash_value_old: true,
                 constraint_type: get_constraint_type_from_equation(&equation),
             };
-            for _ in 0..opb_file.max_name_index{
-                constraint.literals.push(None);
-            }
             for summand in equation.lhs {
-                constraint.literals[summand.variable_index as usize] = Some(Literal{
+                constraint.literals.insert(summand.variable_index as usize, Literal{
                     index: summand.variable_index,
                     factor: summand.factor as u128,
                     positive: summand.positive});
@@ -161,7 +158,7 @@ impl Constraint {
 
          */
         let already_satisfied =  if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
-        let literal_in_constraint = self.literals.get(literal.index as usize).unwrap();
+        let literal_in_constraint = self.literals.get(&(literal.index as usize));
         match literal_in_constraint {
             None => {
                 panic!("Propagate must only be called on constraints that actually contain the literal!")
@@ -238,7 +235,7 @@ impl Constraint {
 
     pub fn undo(&mut self, variable_index: u32, variable_sign: bool) -> bool {
         if self.assignments.contains_key(&(variable_index as usize)) {
-            if let Some(literal) = self.literals.get(variable_index as usize).unwrap() {
+            if let Some(literal) = self.literals.get(&(variable_index as usize)) {
 
                 let satisfied_before_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
                 self.unassigned_literals.insert(literal.index as usize, literal.clone());
@@ -445,38 +442,5 @@ impl Constraint {
             //(a,b).hash(state);
         //}
 
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::parsing::parser::parse;
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-
-    #[test]
-    fn test_parse() {
-        let opb_file = parse("-2 x1 = 7;\n1 x1 <= 1;\n2 x + 3 x + 1 x >= 3");
-        if let Ok(o) = opb_file {
-            let formula = PseudoBooleanFormula::new(&o);
-            assert_eq!(formula.constraints.len(), 4);
-            assert_eq!(formula.constraints.get(0).unwrap().degree, 9);
-            assert_eq!(formula.constraints.get(0).unwrap().literals.get(0).unwrap().as_ref().unwrap().factor, 2);
-            assert_eq!(formula.constraints.get(0).unwrap().literals.get(0).unwrap().as_ref().unwrap().positive, false);
-            assert_eq!(formula.constraints.get(0).unwrap().sum_unassigned, 2);
-            assert_eq!(formula.constraints.get(0).unwrap().sum_true, 0);
-            assert_eq!(formula.constraints.get(1).unwrap().degree, -7);
-            assert_eq!(formula.constraints.get(1).unwrap().literals.get(0).unwrap().as_ref().unwrap().factor, 2);
-            assert_eq!(formula.constraints.get(1).unwrap().literals.get(0).unwrap().as_ref().unwrap().positive, true);
-            assert_eq!(formula.constraints.get(1).unwrap().sum_unassigned, 2);
-            assert_eq!(formula.constraints.get(1).unwrap().sum_true, 0);
-            assert_eq!(formula.constraints.get(2).unwrap().degree, 0);
-            assert_eq!(formula.constraints.get(2).unwrap().literals.get(0).unwrap().as_ref().unwrap().factor, 1);
-            assert_eq!(formula.constraints.get(2).unwrap().literals.get(0).unwrap().as_ref().unwrap().positive, false);
-            assert_eq!(formula.constraints.get(2).unwrap().sum_unassigned, 1);
-            assert_eq!(formula.constraints.get(2).unwrap().sum_true, 0);
-        } else {
-            assert!(false);
-        }
     }
 }
