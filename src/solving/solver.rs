@@ -1,5 +1,5 @@
 use std::cmp::PartialEq;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 use crate::partitioning::disconnected_component_datastructure::{Component, ComponentBasedFormula};
@@ -120,6 +120,7 @@ impl Solver {
 
             #[cfg(feature = "disconnected_components")]
             {
+
 
                 if self.branch_components() {
                     continue;
@@ -527,7 +528,7 @@ impl Solver {
                 }
 
             }
-            if let Some(index) = max_index {
+            if let Some(_) = max_index {
                 return max_index;
             }else {
                 self.next_variables.clear();
@@ -713,7 +714,7 @@ impl Solver {
         to_visit.push(0);
         loop {
             while !to_visit.is_empty() {
-                let mut constraint_index = to_visit.pop().unwrap();
+                let constraint_index = to_visit.pop().unwrap();
                 if constraint_index as usize >= partvec.len() {
                     println!("test");
                 }
@@ -748,118 +749,66 @@ impl Solver {
         let partvec: Vec<u32> = partvec.iter().map(|x| x.unwrap()).collect();
 
         if current_partition_label == 0 && single_variables.len() == 0{
-
-
             if self.next_variables.is_empty() {
-
-                let (cut, partvec, edges_to_remove) = partition(current_constraint_index as u32, current_variable_index as u32, pins, x_pins);
-
-                self.next_variables.clear();
+                let (_, _, edges_to_remove) = partition(current_constraint_index as u32, current_variable_index as u32, pins, x_pins);
                 for e in edges_to_remove {
                     self.next_variables.push(**variable_index_map.get(e as usize).unwrap() as u32);
                 }
-
-
-
            }
-
-
-
-
             return None;
         }
 
+        let mut component_based_formula = ComponentBasedFormula::new(self.number_unsat_constraints, self.number_unassigned_variables, self.variable_in_scope.clone(), self.constraint_indexes_in_scope.clone());
+        let mut number_partitions = 0;
+        for p in &partvec {
+            if *p > number_partitions {
+                number_partitions = *p;
+            }
+        }
+        number_partitions += 1;
 
-        //if cut == 0 {
-            let mut component_based_formula = ComponentBasedFormula::new(self.number_unsat_constraints, self.number_unassigned_variables, self.variable_in_scope.clone(), self.constraint_indexes_in_scope.clone());
-            let mut number_partitions = 0;
-            for p in &partvec {
-                if *p > number_partitions {
-                    number_partitions = *p;
-                }
-            }
-            number_partitions += 1;
-
-            for _ in 0 .. number_partitions {
-                component_based_formula.components.push(Component{
-                    variables: BTreeSet::new(),
-                    number_unassigned_variables: 0,
-                    number_unsat_constraints: 0,
-                    constraint_indexes_in_scope: BTreeSet::new(),
-                })
-            }
-            for (index, partition_number) in partvec.iter().enumerate() {
-                let constraint_index = constraint_index_map.get(index).unwrap();
-                let component = component_based_formula.components.get_mut(*partition_number as usize).unwrap();
-                component.constraint_indexes_in_scope.insert(*constraint_index);
-                let mut constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-                for (i,l) in &constraint.unassigned_literals {
-                    if !component.variables.contains(i) {
-                        component.number_unassigned_variables += 1;
-                        component.variables.insert(*i);
-                    }
-                }
-                if constraint.is_unsatisfied() {
-                    component.number_unsat_constraints += 1;
-                }
-            }
-            if single_variables.len() > 0 {
-                let mut component = Component{
-                    variables: BTreeSet::new(),
-                    number_unsat_constraints: 0,
-                    number_unassigned_variables: 0,
-                    constraint_indexes_in_scope: BTreeSet::new(),
-                };
-                for variable_index in single_variables {
-                    component.variables.insert(*variable_index);
+        for _ in 0 .. number_partitions {
+            component_based_formula.components.push(Component{
+                variables: BTreeSet::new(),
+                number_unassigned_variables: 0,
+                number_unsat_constraints: 0,
+                constraint_indexes_in_scope: BTreeSet::new(),
+            })
+        }
+        for (index, partition_number) in partvec.iter().enumerate() {
+            let constraint_index = constraint_index_map.get(index).unwrap();
+            let component = component_based_formula.components.get_mut(*partition_number as usize).unwrap();
+            component.constraint_indexes_in_scope.insert(*constraint_index);
+            let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
+            for (i,_) in &constraint.unassigned_literals {
+                if !component.variables.contains(i) {
                     component.number_unassigned_variables += 1;
-
+                    component.variables.insert(*i);
                 }
-                component_based_formula.components.push(component);
             }
-
-            if component_based_formula.previous_number_unassigned_variables as u32 != component_based_formula.components.iter().map(|x| x.number_unassigned_variables).sum() {
-                println!("test");
-            }
-            Some(component_based_formula)
-
-
-
-/*
-            println!("{}", component_based_formula.components.len());
-            for c in &component_based_formula.components {
-                println!(" - {}", c.variables.len());
-            }
-
- */
-        /*
-            Some(component_based_formula)
-        }else {
-            self.next_variables.clear();
-            for e in edges_to_remove {
-                self.next_variables.push(e);
-            }
-            None
-        }
-
-         */
-    }
-
-
-
-    #[cfg(feature = "disconnected_components")]
-    fn add_connected_constraints(&self, matrix: &BTreeMap<usize,BTreeSet<usize>>, component: &mut BTreeSet<usize>, variable_index: usize, visited: &mut HashSet<usize>) -> bool {
-        if visited.contains(&variable_index) {
-            return false
-        }
-        visited.insert(variable_index);
-        if let Some(vector) = matrix.get(&variable_index) {
-            for index in vector {
-                component.insert(*index);
-                self.add_connected_constraints(matrix, component, *index, visited);
+            if constraint.is_unsatisfied() {
+                component.number_unsat_constraints += 1;
             }
         }
-        true
+        if single_variables.len() > 0 {
+            let mut component = Component{
+                variables: BTreeSet::new(),
+                number_unsat_constraints: 0,
+                number_unassigned_variables: 0,
+                constraint_indexes_in_scope: BTreeSet::new(),
+            };
+            for variable_index in single_variables {
+                component.variables.insert(*variable_index);
+                component.number_unassigned_variables += 1;
+
+            }
+            component_based_formula.components.push(component);
+        }
+
+        if component_based_formula.previous_number_unassigned_variables as u32 != component_based_formula.components.iter().map(|x| x.number_unassigned_variables).sum() {
+            println!("test");
+        }
+        Some(component_based_formula)
     }
 
     #[cfg(feature = "show_progress")]

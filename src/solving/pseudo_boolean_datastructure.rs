@@ -371,7 +371,7 @@ fn replace_l_equations(equation: &Equation) -> Equation {
 
 fn replace_g_equations(equation: &Equation) -> Equation {
     if equation.kind == G {
-        let mut e = Equation{
+        let e = Equation{
             lhs: equation.lhs.clone(),
             rhs: equation.rhs + 1,
             kind: EquationKind::Ge
