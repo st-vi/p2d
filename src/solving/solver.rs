@@ -25,9 +25,10 @@ pub struct Solver {
     pub statistics: Statistics,
     variable_in_scope: BTreeSet<usize>,
     constraint_indexes_in_scope: BTreeSet<usize>,
-    progress: HashMap<u32, u32>,
+    progress: HashMap<u32, f32>,
     last_progress: f32,
     next_variables: Vec<u32>,
+    progress_split: u128,
 }
 
 impl Solver {
@@ -57,6 +58,7 @@ impl Solver {
             last_progress: -1.0,
             constraint_indexes_in_scope: BTreeSet::new(),
             next_variables: Vec::new(),
+            progress_split: 1
         };
         for i in 0..number_variables{
             solver.assignments.push(None);
@@ -75,6 +77,8 @@ impl Solver {
         use std::time::Instant;
         let now = Instant::now();
         let result = self.count();
+        #[cfg(feature = "show_progress")]
+        self.print_progress(0);
         let elapsed = now.elapsed();
         self.statistics.time_to_compute = elapsed.as_millis();
         self.statistics.learned_clauses = self.learned_clauses.len();
@@ -86,6 +90,7 @@ impl Solver {
             //after simplifying formula violated constraint detected
             return BigUint::zero();
         }
+
         loop {
             if self.number_unsat_constraints <= 0 {
                 //current assignment satisfies all constraints
@@ -401,6 +406,11 @@ impl Solver {
                         //undo branch
                         if last_branch.current_component == last_branch.components.len() -1 {
                             // we processed all components
+                            #[cfg(feature = "show_progress")]
+                            if self.decision_level < 5{
+                                self.progress_split /= last_branch.components.len() as u128;
+                            }
+
                             let mut branch_result = BigUint::one();
                             for _ in 0..last_branch.components.len(){
                                 branch_result = branch_result * self.result_stack.pop().unwrap();
@@ -614,6 +624,10 @@ impl Solver {
         let result = self.to_disconnected_components();
         match result {
             Some(component_based_formula) => {
+                #[cfg(feature = "show_progress")]
+                if self.decision_level < 5{
+                    self.progress_split *= component_based_formula.components.len() as u128;
+                }
                 self.number_unsat_constraints = component_based_formula.components.get(0).unwrap().number_unsat_constraints as usize;
                 self.number_unassigned_variables = component_based_formula.components.get(0).unwrap().number_unassigned_variables;
                 self.variable_in_scope = component_based_formula.components.get(0).unwrap().variables.clone();
@@ -867,27 +881,28 @@ impl Solver {
 
     #[cfg(feature = "show_progress")]
     fn print_progress(&mut self, decision_level: u32) {
-        if decision_level < 9 {
+        if decision_level < 5 {
             let res = self.progress.get(&decision_level);
+            let additional_progress: f32 = 1.0 / self.progress_split as f32;
             match res {
                 None => {
-                    self.progress.insert(decision_level, 1);
+                    self.progress.insert(decision_level, additional_progress);
                 },
                 Some(v) => {
-                    self.progress.insert(decision_level, *v + 1);
+                    self.progress.insert(decision_level, *v + additional_progress);
                 }
             }
             for i in decision_level + 1..9{
                 self.progress.remove(&i);
             }
-        }
-        let mut progress = 0.0;
-        for (k,v) in &self.progress {
-            progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
-        }
-        if progress != self.last_progress {
-            self.last_progress = progress;
-            println!("{progress} %");
+            let mut progress = 0.0;
+            for (k,v) in &self.progress {
+                progress += (100.0 / 2_i32.pow(*k) as f32) * (*v as f32);
+            }
+            if progress != self.last_progress {
+                self.last_progress = progress;
+                println!("{progress} %");
+            }
         }
     }
 
