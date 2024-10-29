@@ -2,8 +2,8 @@ use std::cmp::PartialEq;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
-use crate::partitioning::disconnected_component_datastructure::{Component, ComponentBasedFormula};
-use crate::partitioning::hypergraph_partitioning::partition;
+use crate::partitioning::disconnected_component_datastructure::{ComponentBasedFormula};
+use crate::partitioning::hypergraph::Hypergraph;
 use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, ConstraintIndex, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::ConstraintIndex::{LearnedClauseIndex, NormalConstraintIndex};
 use crate::solving::pseudo_boolean_datastructure::ConstraintType::GreaterEqual;
@@ -12,22 +12,22 @@ use crate::solving::solver::AssignmentKind::{FirstDecision, Propagated, SecondDe
 use crate::solving::solver::AssignmentStackEntry::{Assignment, ComponentBranch};
 
 pub struct Solver {
-    pseudo_boolean_formula: PseudoBooleanFormula,
+    pub(crate) pseudo_boolean_formula: PseudoBooleanFormula,
     assignment_stack: Vec<AssignmentStackEntry>,
-    assignments: Vec<Option<(u32, bool)>>,
+    pub(crate) assignments: Vec<Option<(u32, bool)>>,
     decision_level: u32,
     learned_clauses: Vec<Constraint>,
     learned_clauses_by_variables: Vec<Vec<usize>>,
     result_stack: Vec<BigUint>,
-    number_unsat_constraints: usize,
-    number_unassigned_variables: u32,
+    pub(crate) number_unsat_constraints: usize,
+    pub(crate) number_unassigned_variables: u32,
     cache: HashMap<u64,BigUint>,
     pub statistics: Statistics,
-    variable_in_scope: BTreeSet<usize>,
-    constraint_indexes_in_scope: BTreeSet<usize>,
+    pub(crate) variable_in_scope: BTreeSet<usize>,
+    pub(crate) constraint_indexes_in_scope: BTreeSet<usize>,
     progress: HashMap<u32, f32>,
     last_progress: f32,
-    next_variables: Vec<u32>,
+    pub(crate) next_variables: Vec<u32>,
     progress_split: u128,
 }
 
@@ -246,6 +246,9 @@ impl Solver {
         //TODO check if the assignments should be made somewhere in the assignment stack (e.g. on max decisionlevel of the assigned literals of the constraint that implies)
 
         for clause in &mut self.learned_clauses {
+            if clause.literals.contains_key(&(variable_index as usize)) {
+                continue;
+            }
             let result = clause.simplify();
             let constraint_index = &clause.index;
             match result {
@@ -266,12 +269,21 @@ impl Solver {
                 AlreadySatisfied => {
                 },
                 ImpliedLiteralList(list) => {
+                    /*
+                    println!("decision_level: {}, variable_index: {}", self.decision_level, variable_index);
+                    for (i, (s,kind,dl)) in &clause.assignments {
+                        println!("i: {}, s: {}, k: {:?}, dl: {}", i, s, kind, dl);
+                    }
+
+                     */
                     for l in list {
                         propagation_queue.push_back((l.index, l.positive, Propagated(*constraint_index), true));
                     }
                 }
             }
         }
+
+
 
 
 
@@ -331,6 +343,7 @@ impl Solver {
                     }
                 }
             }
+
             //propagate from learned clauses
             for constraint_index in self.learned_clauses_by_variables.get(index as usize).unwrap() {
                 let result = self.learned_clauses.get_mut(*constraint_index).unwrap().propagate(Literal{index, positive: sign, factor: 0}, kind, self.decision_level);
@@ -355,6 +368,8 @@ impl Solver {
                     }
                 }
             }
+
+
         }
         None
     }
@@ -649,166 +664,21 @@ impl Solver {
 
     #[cfg(feature = "disconnected_components")]
     pub fn to_disconnected_components(&mut self) -> Option<ComponentBasedFormula> {
-        //let mut components = Vec::new();
-        let mut pins = Vec::new();
-        let mut x_pins = Vec::new();
-        //hg index to FM index
-        let mut variable_index_map = Vec::new();
-        let mut variable_index_map_reverse = BTreeMap::new();
-        let mut current_variable_index = 0;
-        //hg index to FM index
-        let mut constraint_index_map = Vec::new();
-        let mut constraint_index_map_reverse: BTreeMap<usize, u32> = BTreeMap::new();
-        let mut current_constraint_index = 0;
-        let mut single_variables = BTreeSet::new();
-        x_pins.push(0);
-
-        for variable_in_scope in &self.variable_in_scope {
-            if self.assignments.get(*variable_in_scope).unwrap().is_none() {
-                let mut tmp_constraint_indexes = Vec::new();
-                for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(*variable_in_scope).unwrap() {
-                    let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-                    if constraint.is_unsatisfied() {
-                        if let NormalConstraintIndex(index) = constraint.index {
-                            tmp_constraint_indexes.push(index);
-                        }
-
-                    }
+        let hypergraph = Hypergraph::new(&self);
+        match hypergraph.find_disconnected_components(&self) {
+            Some(partvec) => {
+                // there is already a partition
+                Some(hypergraph.create_partition(&self, partvec))
+            },
+            None => {
+                // currently no partition => get variables for a good cut
+                if self.next_variables.is_empty() {
+                    let nv = hypergraph.get_variables_for_cut();
+                    self.next_variables.extend(nv);
                 }
-                if tmp_constraint_indexes.len() > 0 {
-                    variable_index_map.push(variable_in_scope);
-                    variable_index_map_reverse.insert(variable_in_scope, current_variable_index);
-                    current_variable_index += 1;
-                    for constraint_index in tmp_constraint_indexes {
-                        let index =
-                            match constraint_index_map_reverse.get(&constraint_index) {
-                                Some(v) => {
-                                    *v
-                                },
-                                None => {
-                                    constraint_index_map.push(constraint_index);
-                                    constraint_index_map_reverse.insert(constraint_index, current_constraint_index as u32);
-                                    current_constraint_index += 1;
-                                    (current_constraint_index - 1) as u32
-                                }
-                            };
-
-                        pins.push(index);
-                    }
-                    x_pins.push(pins.len());
-                }else{
-                    single_variables.insert(variable_in_scope);
-                }
+                None
             }
         }
-
-        let mut current_partition_label = 0;
-        let mut partvec = Vec::new();
-        if current_constraint_index == 0 {
-            return None;
-        }
-        for _ in 0..current_constraint_index {
-            partvec.push(None);
-        }
-        let mut to_visit = Vec::new();
-        to_visit.push(0);
-        loop {
-            while !to_visit.is_empty() {
-                let constraint_index = to_visit.pop().unwrap();
-                if constraint_index as usize >= partvec.len() {
-                    println!("test");
-                }
-                if let Some(label) = partvec.get(constraint_index as usize).unwrap(){
-                    if *label != current_partition_label {
-                        println!("test");
-                    }
-                    continue;
-                }
-
-                partvec[constraint_index as usize] = Some(current_partition_label);
-                let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index_map.get(constraint_index as usize).unwrap()).unwrap();
-                for (index, _) in &constraint.unassigned_literals {
-                    for i in *x_pins.get(*variable_index_map_reverse.get(index).unwrap() as usize).unwrap()..*x_pins.get(*variable_index_map_reverse.get(index).unwrap() as usize + 1).unwrap() {
-                        to_visit.push(*pins.get(i).unwrap());
-                    }
-                }
-            }
-            let mut done = true;
-            for (i,v) in partvec.iter().enumerate() {
-                if v.is_none() {
-                    current_partition_label += 1;
-                    to_visit.push(i as u32);
-                    done = false;
-                    break;
-                }
-            }
-            if done {
-                break;
-            }
-        }
-        let partvec: Vec<u32> = partvec.iter().map(|x| x.unwrap()).collect();
-
-        if current_partition_label == 0 && single_variables.len() == 0{
-            if self.next_variables.is_empty() {
-                let (_, _, edges_to_remove) = partition(current_constraint_index as u32, current_variable_index as u32, pins, x_pins);
-                for e in edges_to_remove {
-                    self.next_variables.push(**variable_index_map.get(e as usize).unwrap() as u32);
-                }
-           }
-            return None;
-        }
-
-        let mut component_based_formula = ComponentBasedFormula::new(self.number_unsat_constraints, self.number_unassigned_variables, self.variable_in_scope.clone(), self.constraint_indexes_in_scope.clone());
-        let mut number_partitions = 0;
-        for p in &partvec {
-            if *p > number_partitions {
-                number_partitions = *p;
-            }
-        }
-        number_partitions += 1;
-
-        for _ in 0 .. number_partitions {
-            component_based_formula.components.push(Component{
-                variables: BTreeSet::new(),
-                number_unassigned_variables: 0,
-                number_unsat_constraints: 0,
-                constraint_indexes_in_scope: BTreeSet::new(),
-            })
-        }
-        for (index, partition_number) in partvec.iter().enumerate() {
-            let constraint_index = constraint_index_map.get(index).unwrap();
-            let component = component_based_formula.components.get_mut(*partition_number as usize).unwrap();
-            component.constraint_indexes_in_scope.insert(*constraint_index);
-            let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-            for (i,_) in &constraint.unassigned_literals {
-                if !component.variables.contains(i) {
-                    component.number_unassigned_variables += 1;
-                    component.variables.insert(*i);
-                }
-            }
-            if constraint.is_unsatisfied() {
-                component.number_unsat_constraints += 1;
-            }
-        }
-        if single_variables.len() > 0 {
-            let mut component = Component{
-                variables: BTreeSet::new(),
-                number_unsat_constraints: 0,
-                number_unassigned_variables: 0,
-                constraint_indexes_in_scope: BTreeSet::new(),
-            };
-            for variable_index in single_variables {
-                component.variables.insert(*variable_index);
-                component.number_unassigned_variables += 1;
-
-            }
-            component_based_formula.components.push(component);
-        }
-
-        if component_based_formula.previous_number_unassigned_variables as u32 != component_based_formula.components.iter().map(|x| x.number_unassigned_variables).sum() {
-            println!("test");
-        }
-        Some(component_based_formula)
     }
 
     #[cfg(feature = "show_progress")]
