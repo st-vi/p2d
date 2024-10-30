@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use crate::partitioning::disconnected_component_datastructure::{Component, ComponentBasedFormula};
 use crate::partitioning::hypergraph_partitioning::partition;
 use crate::solving::pseudo_boolean_datastructure::ConstraintIndex::NormalConstraintIndex;

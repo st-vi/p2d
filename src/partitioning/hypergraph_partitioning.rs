@@ -1,5 +1,5 @@
 use std::ptr;
-use crate::partitioning::patoh_api::{PaToH_Alloc, PaToH_Free, PaToH_Initialize_Parameters, PaToH_Parameters, PaToH_Part, PATOH_CONPART, PATOH_SUGPARAM_QUALITY};
+use crate::partitioning::patoh_api::{PaToH_Alloc, PaToH_Free, PaToH_Initialize_Parameters, PaToH_Parameters, PaToH_Part, PATOH_CONPART, PATOH_SUGPARAM_DEFAULT};
 use libc::{c_int, free, malloc};
 
 pub fn partition(number_vertices: u32, number_nets: u32, nets: &Vec<u32>, x_pins: &Vec<u32>) -> (u32, Vec<u32>, Vec<u32>) {
@@ -85,7 +85,7 @@ pub fn partition(number_vertices: u32, number_nets: u32, nets: &Vec<u32>, x_pins
         PaToH_Initialize_Parameters(
             &mut args,
             PATOH_CONPART as c_int,
-            PATOH_SUGPARAM_QUALITY as c_int
+            PATOH_SUGPARAM_DEFAULT as c_int
         );
 
         args.seed = 1;
