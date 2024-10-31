@@ -1,7 +1,7 @@
 WHITESPACE = _{ " " }
 factor_sign = { "+" | "-" }
 factor_value = { ASCII_DIGIT+ }
-var_name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "/" | "+")* }
+var_name = @{ ( "_" | ASCII_ALPHANUMERIC) ~ (ASCII_ALPHANUMERIC | "_" | "/" | "+")* }
 first_literal = {factor_sign? ~ (factor_value ~ "*"?)? ~ var_name }
 implicit_one_literal = {factor_sign ~ var_name }
 literal = {factor_sign ~ factor_value ~ "*"? ~ var_name }
