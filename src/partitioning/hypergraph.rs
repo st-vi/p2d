@@ -77,7 +77,7 @@ impl Hypergraph {
         let mut partvec = Vec::new();
         let mut number_visited = 0;
         let mut last_visited = 0;
-        if self.current_constraint_index == 0 {
+        if self.current_constraint_index == 1 {
             return None;
         }
         for _ in 0..self.current_constraint_index {
@@ -130,6 +130,9 @@ impl Hypergraph {
     }
 
     pub fn get_variables_for_cut(&self) -> Vec<u32> {
+        if self.current_constraint_index <= 1 || self.current_variable_index <= 1 {
+            return Vec::new()
+        }
         let mut next_variables = Vec::new();
         let (_, _, edges_to_remove) = partition(self.current_constraint_index, self.current_variable_index, &self.pins, &self.x_pins);
         for e in edges_to_remove {

@@ -506,50 +506,51 @@ impl Solver {
     }
 
     fn get_next_variable(&mut self) -> Option<u32> {
+        if self.next_variables.len() == 1 {
+            return self.next_variables.pop();
+        }
 
-        self.next_variables = self.next_variables.iter().filter(|x| self.assignments.get(**x as usize).unwrap().is_none() && self.variable_in_scope.contains(&(**x as usize))).map(|x| *x).collect();
         let mut counter: Vec<u32> = Vec::new();
         for _ in 0..self.pseudo_boolean_formula.number_variables {
             counter.push(0);
         }
-
-        if self.next_variables.len() == 1 {
-            return self.next_variables.pop();
-        }
         if self.next_variables.len() > 0 {
-            for variable_index in &self.next_variables {
-                for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(*variable_index as usize).unwrap() {
-                    let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-                    if constraint.is_unsatisfied(){
-                        for (_,literal) in &constraint.unassigned_literals {
-                            let tmp_res = counter.get(literal.index as usize).unwrap();
-                            counter[literal.index as usize] = tmp_res + 1;
+            if self.next_variables.len() > 0 {
+                for variable_index in &self.next_variables {
+                    for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(*variable_index as usize).unwrap() {
+                        let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
+                        if constraint.is_unsatisfied(){
+                            for (_,literal) in &constraint.unassigned_literals {
+                                let tmp_res = counter.get(literal.index as usize).unwrap();
+                                counter[literal.index as usize] = tmp_res + 1;
 
+                            }
                         }
                     }
                 }
-            }
-            let mut max_index: Option<u32> = None;
-            let mut max_value: Option<u32> = None;
-            for (k,v) in counter.iter().enumerate() {
-                if *v > 0 && max_value.is_none() {
-                    max_value = Some(*v);
-                    max_index = Some(k as u32);
-                } else if let Some(value) = max_value {
-                    if v > &value {
+                let mut max_index: Option<u32> = None;
+                let mut max_value: Option<u32> = None;
+                for (k,v) in counter.iter().enumerate() {
+                    if *v > 0 && max_value.is_none() {
                         max_value = Some(*v);
                         max_index = Some(k as u32);
+                    } else if let Some(value) = max_value {
+                        if v > &value {
+                            max_value = Some(*v);
+                            max_index = Some(k as u32);
+                        }
                     }
+
+                }
+                if let Some(_) = max_index {
+                    return max_index;
+                }else {
+                    self.next_variables.clear();
                 }
 
             }
-            if let Some(_) = max_index {
-                return max_index;
-            }else {
-                self.next_variables.clear();
-            }
-
         }
+
 
 
 
@@ -664,20 +665,27 @@ impl Solver {
 
     #[cfg(feature = "disconnected_components")]
     pub fn to_disconnected_components(&mut self) -> Option<ComponentBasedFormula> {
-        let hypergraph = Hypergraph::new(&self);
-        match hypergraph.find_disconnected_components(&self) {
-            Some(partvec) => {
-                // there is already a partition
-                Some(hypergraph.create_partition(&self, partvec))
-            },
-            None => {
-                // currently no partition => get variables for a good cut
-                if self.next_variables.is_empty() {
-                    let nv = hypergraph.get_variables_for_cut();
-                    self.next_variables.extend(nv);
+        self.next_variables = self.next_variables.iter().filter(|x| self.assignments.get(**x as usize).unwrap().is_none() && self.variable_in_scope.contains(&(**x as usize))).map(|x| *x).collect();
+
+        if self.number_unsat_constraints > 1 {
+            let hypergraph = Hypergraph::new(&self);
+            match hypergraph.find_disconnected_components(&self) {
+                Some(partvec) => {
+                    // there is already a partition
+                    Some(hypergraph.create_partition(&self, partvec))
+                },
+                None => {
+                    // currently no partition => get variables for a good cut
+                    if self.next_variables.is_empty() {
+                        let nv = hypergraph.get_variables_for_cut();
+                        self.next_variables.extend(nv);
+                    }
+
+                    None
                 }
-                None
             }
+        } else {
+            None
         }
     }
 
