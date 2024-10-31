@@ -29,6 +29,7 @@ pub struct Solver {
     last_progress: f32,
     pub(crate) next_variables: Vec<u32>,
     progress_split: u128,
+    vsids_scores: BTreeMap<u32, f64>,
 }
 
 impl Solver {
@@ -58,12 +59,14 @@ impl Solver {
             last_progress: -1.0,
             constraint_indexes_in_scope: BTreeSet::new(),
             next_variables: Vec::new(),
-            progress_split: 1
+            progress_split: 1,
+            vsids_scores: BTreeMap::new(),
         };
         for i in 0..number_variables{
             solver.assignments.push(None);
             solver.variable_in_scope.insert(i as usize);
             solver.learned_clauses_by_variables.push(Vec::new());
+            solver.vsids_scores.insert(i,1.0);
         }
         for c in &solver.pseudo_boolean_formula.constraints {
             if let NormalConstraintIndex(i) = c.index {
@@ -510,108 +513,55 @@ impl Solver {
             return self.next_variables.pop();
         }
 
-        let mut counter: Vec<u32> = Vec::new();
-        for _ in 0..self.pseudo_boolean_formula.number_variables {
-            counter.push(0);
-        }
         if self.next_variables.len() > 0 {
-            if self.next_variables.len() > 0 {
-                for variable_index in &self.next_variables {
-                    for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(*variable_index as usize).unwrap() {
-                        let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-                        if constraint.is_unsatisfied(){
-                            for (_,literal) in &constraint.unassigned_literals {
-                                let tmp_res = counter.get(literal.index as usize).unwrap();
-                                counter[literal.index as usize] = tmp_res + 1;
-
-                            }
-                        }
+            let mut max_index: Option<u32> = None;
+            let mut max_value: Option<f64> = None;
+            for k in &self.next_variables {
+                let v = *self.vsids_scores.get(&k).unwrap();
+                if v > 0.0 && max_value.is_none() {
+                    max_value = Some(v);
+                    max_index = Some(*k);
+                } else if let Some(value) = max_value {
+                    if v > value {
+                        max_value = Some(v);
+                        max_index = Some(*k);
                     }
                 }
-                let mut max_index: Option<u32> = None;
-                let mut max_value: Option<u32> = None;
-                for (k,v) in counter.iter().enumerate() {
-                    if *v > 0 && max_value.is_none() {
-                        max_value = Some(*v);
-                        max_index = Some(k as u32);
-                    } else if let Some(value) = max_value {
-                        if v > &value {
-                            max_value = Some(*v);
-                            max_index = Some(k as u32);
-                        }
-                    }
-
-                }
-                if let Some(_) = max_index {
-                    return max_index;
-                }else {
-                    self.next_variables.clear();
-                }
-
+            }
+            if let Some(_) = max_index {
+                return max_index;
+            }else {
+                self.next_variables.clear();
             }
         }
 
+        let mut max_index: Option<u32> = None;
+        let mut max_value: Option<f64> = None;
 
-
-
-
-
-
-        /*
-                for constraint in &self.pseudo_boolean_formula.constraints {
-                    if constraint.is_unsatisfied(){
-                        for (_,literal) in &constraint.unassigned_literals {
-                            if self.variable_in_scope.contains(&(literal.index as usize)) {
-                                let tmp_res = counter.get(literal.index as usize).unwrap();
-                                counter[literal.index as usize] = tmp_res + 1;
-                            }
-                        }
-                    }
-                }
-
-         */
-
-        for constraint_index in &self.constraint_indexes_in_scope {
-            let constraint = self.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-            if constraint.is_unsatisfied() {
+        for constraint in &self.pseudo_boolean_formula.constraints {
+            if constraint.is_unsatisfied(){
                 for (_,literal) in &constraint.unassigned_literals {
-                    let tmp_res = counter.get(literal.index as usize).unwrap();
-                    counter[literal.index as usize] = tmp_res + 1;
-
-                }
-            }
-        }
-        /*
-                for variable_index in &self.variable_in_scope {
-                    for constraint_index in self.learned_clauses_by_variables.get(*variable_index).unwrap() {
-                        let constraint = self.learned_clauses.get(*constraint_index).unwrap();
-                        if constraint.is_unsatisfied(){
-                            for (_,literal) in &constraint.unassigned_literals {
-                                let tmp_res = counter.get(literal.index as usize).unwrap();
-                                counter[literal.index as usize] = tmp_res + 1;
-
+                    if self.variable_in_scope.contains(&(literal.index as usize)) {
+                        let k = literal.index;
+                        let v = *self.vsids_scores.get(&k).unwrap();
+                        if v > 0.0 && max_value.is_none() {
+                            max_value = Some(v);
+                            max_index = Some(k);
+                        } else if let Some(value) = max_value {
+                            if v > value {
+                                max_value = Some(v);
+                                max_index = Some(k);
                             }
                         }
                     }
                 }
-
-         */
-
-
-
-
-
-
-
-        let mut max_index: usize = 0;
-        let mut max_value: u32 = 0;
-        for (k,v) in counter.iter().enumerate() {
-            if v > &max_value {
-                max_value = *v;
-                max_index = k;
             }
         }
-        Some(max_index as u32)
+        if let Some(_) = max_index {
+            return max_index;
+        }else {
+            return None;
+        }
     }
 
     #[cfg(feature = "cache")]
@@ -744,7 +694,7 @@ impl Solver {
     }
 
     #[cfg(feature = "clause_learning")]
-    fn analyze(&self, conflicting_variable_indexes: &BTreeMap<usize,(AssignmentKind, bool, u32)>) -> Option<Constraint> {
+    fn analyze(&mut self, conflicting_variable_indexes: &BTreeMap<usize,(AssignmentKind, bool, u32)>) -> Option<Constraint> {
         let mut reason_set_propagated: Vec<Option<(AssignmentKind, bool, u32)>> = Vec::new();
         let mut reason_set_decision: Vec<Option<(AssignmentKind, bool, u32)>> = Vec::new();
         let mut seen: Vec<bool> = Vec::new();
@@ -867,6 +817,11 @@ impl Solver {
                 constraint.assignments.insert(index, (*sign,*a,*decision_level));
                 constraint.factor_sum += 1;
             }
+        }
+        for (_,literal) in &constraint.literals {
+            let mut tmp = *self.vsids_scores.get(&literal.index).unwrap();
+            tmp += literal.factor as f64 / constraint.degree as f64;
+            self.vsids_scores.insert(literal.index, tmp);
         }
         Some(constraint)
     }
