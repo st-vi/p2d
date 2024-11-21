@@ -77,7 +77,7 @@ impl Hypergraph {
         let mut partvec = Vec::new();
         let mut number_visited = 0;
         let mut last_visited = 0;
-        if self.current_constraint_index == 1 {
+        if self.current_constraint_index <= 1 {
             return None;
         }
         for _ in 0..self.current_constraint_index {
@@ -91,6 +91,10 @@ impl Hypergraph {
                 let constraint_index = to_visit.pop().unwrap();
                 if constraint_index as usize >= partvec.len() {
                     println!("test");
+                }
+                if partvec.get(constraint_index as usize).is_none(){
+                    println!("{}", constraint_index);
+                    println!("{}", self.current_constraint_index);
                 }
                 if let Some(label) = partvec.get(constraint_index as usize).unwrap() {
                     if *label != current_partition_label {

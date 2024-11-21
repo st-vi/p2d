@@ -29,6 +29,7 @@ pub struct Constraint {
     pub hash_value: u64,
     pub hash_value_old: bool,
     pub constraint_type: ConstraintType,
+    pub max_literal: Literal,
     //TODO cashe sum of max literal and update when necessary instead of calculating every time
 }
 
@@ -119,6 +120,7 @@ impl PseudoBooleanFormula {
                 hash_value: 0,
                 hash_value_old: true,
                 constraint_type: get_constraint_type_from_equation(&equation),
+                max_literal: Literal{ index: 0, factor: 0, positive: false },
             };
             for summand in equation.lhs {
                 constraint.literals.insert(summand.variable_index as usize, Literal{
@@ -131,6 +133,7 @@ impl PseudoBooleanFormula {
                     positive: summand.positive});
                 pseudo_boolean_formula.constraints_by_variable.get_mut(summand.variable_index as usize).unwrap().push(constraint_counter as usize);
             }
+            constraint.max_literal = constraint.get_max_literal();
             pseudo_boolean_formula.constraints.push(constraint);
             constraint_counter += 1;
         }
@@ -140,6 +143,7 @@ impl PseudoBooleanFormula {
 
 impl Constraint {
     pub fn propagate(&mut self, literal: Literal, assignment_kind: AssignmentKind, decision_level: u32) -> PropagationResult {
+
         if let Some((a,_,_)) = self.assignments.get(&(literal.index as usize)) {
             if *a == literal.positive {
                 return NothingToPropagated;
@@ -148,6 +152,8 @@ impl Constraint {
                 return Unsatisfied
             }
         }
+
+
 
         /*
         if self.assignments.contains(&(literal.index, !literal.positive)) {
@@ -158,6 +164,12 @@ impl Constraint {
 
          */
         let already_satisfied =  if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
+
+        if already_satisfied {
+            return AlreadySatisfied;
+        }
+
+
         let literal_in_constraint = self.literals.get(&(literal.index as usize));
         match literal_in_constraint {
             None => {
@@ -177,6 +189,7 @@ impl Constraint {
                     self.assignments.insert(literal.index as usize, (literal.positive, assignment_kind, decision_level));
                 }
                 self.hash_value_old = true;
+
                 if self.constraint_type == NotEqual {
                     if self.sum_unassigned == 0 && self.sum_true != self.degree as u128 {
                         // fulfilled
@@ -192,6 +205,9 @@ impl Constraint {
                         return NothingToPropagated
                     }
                 }
+
+                self.max_literal = self.get_max_literal();
+
                 if self.sum_true >= self.degree as u128 {
                     // fulfilled
                     return if already_satisfied {
@@ -210,20 +226,10 @@ impl Constraint {
                     }
                     return ImpliedLiteralList(implied_literals);
                 } else {
-                    let mut max_literal_factor = 0;
-                    let mut max_literal_index = 0;
-                    let mut max_literal_sign = false;
-                    for (_,literal) in &self.unassigned_literals {
-                        if literal.factor > max_literal_factor {
-                            max_literal_factor = literal.factor;
-                            max_literal_index = literal.index;
-                            max_literal_sign = literal.positive;
-                        }
 
-                    }
-                    if self.sum_true + self.sum_unassigned < (self.degree as u128) + max_literal_factor {
+                    if self.sum_true + self.sum_unassigned < (self.degree as u128) + self.max_literal.factor {
                         //max literal implied
-                        let return_value = ImpliedLiteral(Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign});
+                        let return_value = ImpliedLiteral(self.max_literal.clone());
                         return return_value;
                     }
                 }
@@ -236,7 +242,9 @@ impl Constraint {
     pub fn undo(&mut self, variable_index: u32, variable_sign: bool) -> bool {
         if self.assignments.contains_key(&(variable_index as usize)) {
             if let Some(literal) = self.literals.get(&(variable_index as usize)) {
-
+                if literal.factor > self.max_literal.factor {
+                    self.max_literal = literal.clone();
+                }
                 let satisfied_before_undo = if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
                 self.unassigned_literals.insert(literal.index as usize, literal.clone());
                 self.assignments.remove(&(variable_index as usize));
@@ -251,7 +259,6 @@ impl Constraint {
                 }
             }
         }
-
         false
     }
 
@@ -281,22 +288,9 @@ impl Constraint {
             }
             return ImpliedLiteralList(implied_literals);
         }else{
-            let mut max_literal_factor = 0;
-            let mut max_literal_index = 0;
-            let mut max_literal_sign = false;
-            for (_,literal) in &self.unassigned_literals {
-                if literal.factor > max_literal_factor {
-                    max_literal_factor = literal.factor;
-                    max_literal_index = literal.index;
-                    max_literal_sign = literal.positive;
-                }
-            }
-            if max_literal_factor == 0{
-                println!("test");
-            }
-            if self.sum_true + self.sum_unassigned < (self.degree as u128) + max_literal_factor {
+            if self.sum_true + self.sum_unassigned < (self.degree as u128) + self.max_literal.factor {
                 //max literal implied
-                let return_value = ImpliedLiteral(Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign});
+                let return_value = ImpliedLiteral(self.max_literal.clone());
                 return return_value;
             }
         }
@@ -319,6 +313,20 @@ impl Constraint {
             }
         }
         result
+    }
+
+    pub fn get_max_literal(&self) -> Literal {
+        let mut max_literal_factor = 0;
+        let mut max_literal_index = 0;
+        let mut max_literal_sign = false;
+        for (_,literal) in &self.unassigned_literals {
+            if literal.factor > max_literal_factor {
+                max_literal_factor = literal.factor;
+                max_literal_index = literal.index;
+                max_literal_sign = literal.positive;
+            }
+        }
+        Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign}
     }
 }
 
@@ -433,10 +441,12 @@ impl Constraint {
             self.constraint_type.hash(&mut s);
             self.unassigned_literals.hash(&mut s);
             self.sum_true.hash(&mut s);
-            s.finish()
-        }else{
-            self.hash_value
+
+            self.hash_value = s.finish();
+            self.hash_value_old = false;
+
         }
+        self.hash_value
         //self.assignments.hash(state);
         //for (a,(b,_,_)) in &self.assignments {
             //(a,b).hash(state);
