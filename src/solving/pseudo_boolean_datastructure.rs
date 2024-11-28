@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use bimap::BiMap;
 use crate::parsing::equation_datastructure::{Equation, EquationKind, OPBFile, Summand};
@@ -87,6 +87,7 @@ impl PseudoBooleanFormula {
         equation_list = equation_list.iter().map(|x| replace_le_equations(x)).collect();
         equation_list = equation_list.iter().map(|x| replace_l_equations(x)).collect();
         equation_list = equation_list.iter().map(|x| replace_g_equations(x)).collect();
+        equation_list = equation_list.iter().map(|x| add_up_same_variables(x)).collect();
         equation_list = equation_list.iter().map(|x| replace_negative_factors(x)).collect();
         equation_list.iter()
             .for_each(|e|
@@ -328,6 +329,13 @@ impl Constraint {
         }
         Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign}
     }
+
+    pub fn print(&self, pseudo_boolean_formula: &PseudoBooleanFormula) {
+        for (_, l) in &self.literals {
+            print!(" + {} * {}", l.factor, pseudo_boolean_formula.name_map.get_by_right(&l.index).unwrap());
+        }
+        println!(" {:?} {}", self.constraint_type, self.degree);
+    }
 }
 
 fn replace_equal_equations(equation: &Equation) -> Vec<Equation> {
@@ -410,6 +418,39 @@ fn replace_negative_factors(equation: &Equation) -> Equation {
             new_equation.lhs.push(s.clone());
         }
     }
+    new_equation
+}
+
+fn add_up_same_variables(equation: &Equation) -> Equation {
+    let mut new_equation = Equation {
+        lhs: Vec::new(),
+        rhs: equation.rhs.clone(),
+        kind: equation.kind.clone(),
+    };
+
+    let mut visited = HashSet::new();
+
+    for i in 0..equation.lhs.len() {
+        if visited.contains(&equation.lhs.get(i).unwrap().variable_index) {
+            continue;
+        }else{
+            visited.insert(equation.lhs.get(i).unwrap().variable_index);
+        }
+        let current_equation = equation.lhs.get(i).unwrap();
+        let mut summand = Summand{
+            factor: current_equation.factor,
+            variable_index: current_equation.variable_index,
+            positive: current_equation.positive
+        };
+
+        for j in i+1..equation.lhs.len() {
+            if summand.variable_index == equation.lhs.get(j).unwrap().variable_index {
+                summand.factor += equation.lhs.get(j).unwrap().factor;
+            }
+        }
+        new_equation.lhs.push(summand)
+    }
+
     new_equation
 }
 

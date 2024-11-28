@@ -216,6 +216,16 @@ impl Solver {
         true
     }
 
+    fn print_assignment_stack(&self) {
+        println!("---");
+        for e in &self.assignment_stack {
+            if let Assignment(va) = e{
+                println!("{} = {} @ {} - {:?}",  self.pseudo_boolean_formula.name_map.get_by_right(&va.variable_index).unwrap(), va.variable_sign, va.decision_level, va.assignment_kind);
+            }
+        }
+        println!("---");
+    }
+
     fn decide(&mut self) -> Option<(u32,bool)>{
         if self.number_unassigned_variables == 0 {
             return None;
@@ -247,8 +257,21 @@ impl Solver {
         propagation_queue.push_back((variable_index, variable_sign, assignment_kind, false));
 
         //TODO check if the assignments should be made somewhere in the assignment stack (e.g. on max decisionlevel of the assigned literals of the constraint that implies)
-
+/*
         for clause in &mut self.learned_clauses {
+            let mut flag = false;
+            for constraint_index in self.learned_clauses_by_variables.get(variable_index as usize).unwrap() {
+                if let LearnedClauseIndex(i) = clause.index {
+                    if *constraint_index == i {
+                        flag = true;
+                        break;
+                    }
+                }
+            }
+            if flag {
+                //break;
+            }
+
             if clause.literals.contains_key(&(variable_index as usize)) {
                 continue;
             }
@@ -258,20 +281,26 @@ impl Solver {
                 Satisfied => {
                     //self.number_unsat_constraints -= 1;
                     //all results here
+
                 },
                 Unsatisfied => {
+
                     //self.statistics.propagations_from_learned_clauses += 1;
                     propagation_queue.clear();
                     return Some(*constraint_index);
                 },
                 ImpliedLiteral(l) => {
+                    self.statistics.tmp_count += 1;
                     propagation_queue.push_back((l.index, l.positive, Propagated(*constraint_index), true));
                 },
                 NothingToPropagated => {
+
                 },
                 AlreadySatisfied => {
+
                 },
                 ImpliedLiteralList(list) => {
+                    self.statistics.tmp_count += 1;
                     /*
                     println!("decision_level: {}, variable_index: {}", self.decision_level, variable_index);
                     for (i, (s,kind,dl)) in &clause.assignments {
@@ -285,6 +314,10 @@ impl Solver {
                 }
             }
         }
+
+
+ */
+
 
 
 
@@ -306,8 +339,7 @@ impl Solver {
                     continue;
                 }else{
                     // this is a conflicting assignment
-                    panic!("test");
-                    //return false;
+                    panic!("Assigning a two different values to a single variable should never happen")
                 }
             }
             if from_learned_clause {
@@ -793,7 +825,12 @@ impl Solver {
             factor_sum: 0,
             hash_value: 0,
             hash_value_old: true,
-            constraint_type: GreaterEqual
+            constraint_type: GreaterEqual,
+            max_literal: Literal{
+                index: 0,
+                factor: 0,
+                positive: false,
+            },
         };
 
         for (index, entry) in reason_set_propagated.iter().enumerate() {
@@ -823,6 +860,7 @@ impl Solver {
             tmp += literal.factor as f64 / constraint.degree as f64;
             self.vsids_scores.insert(literal.index, tmp);
         }
+        constraint.max_literal = constraint.get_max_literal();
         Some(constraint)
     }
 }
