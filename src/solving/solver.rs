@@ -126,7 +126,6 @@ impl Solver {
 
             #[cfg(feature = "cache")]
             {
-                //TODO cache d-dnnf nodes
                 let cached_result = self.get_cached_result();
                 if let Some((mc, ddnnf_ref)) = cached_result {
                     self.ddnnf_stack.push(Rc::clone(&ddnnf_ref));
