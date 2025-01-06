@@ -21,7 +21,7 @@ impl DDNNFPrinter {
         let root_node = &self.ddnnf.root_node.clone();
         let result = self.print_node(root_node, 0);
         result_string.push_str(&*result);
-        result_string.insert_str(0,&format!("nnf {} {} {}\n", self.current_node_id, self.edge_counter, self.ddnnf.number_variables));
+        //result_string.insert_str(0,&format!("nnf {} {} {}\n", self.current_node_id, self.edge_counter, self.ddnnf.number_variables));
         result_string
     }
 
