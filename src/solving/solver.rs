@@ -1,9 +1,12 @@
 use std::cmp::PartialEq;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::rc::Rc;
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 use crate::partitioning::disconnected_component_datastructure::{ComponentBasedFormula};
 use crate::partitioning::hypergraph::Hypergraph;
+use crate::solving::ddnnf::{DDNNFLiteral, DDNNFNode, DDNNF};
+use crate::solving::ddnnf::DDNNFNode::{AndNode, FalseLeave, LiteralLeave, TrueLeave};
 use crate::solving::pseudo_boolean_datastructure::{calculate_hash, Constraint, ConstraintIndex, Literal, PseudoBooleanFormula};
 use crate::solving::pseudo_boolean_datastructure::ConstraintIndex::{LearnedClauseIndex, NormalConstraintIndex};
 use crate::solving::pseudo_boolean_datastructure::ConstraintType::GreaterEqual;
@@ -19,9 +22,10 @@ pub struct Solver {
     learned_clauses: Vec<Constraint>,
     learned_clauses_by_variables: Vec<Vec<usize>>,
     result_stack: Vec<BigUint>,
+    ddnnf_stack: Vec<Rc<DDNNFNode>>,
     pub(crate) number_unsat_constraints: usize,
     pub(crate) number_unassigned_variables: u32,
-    cache: HashMap<u64,BigUint>,
+    cache: HashMap<u64,(BigUint, Rc<DDNNFNode>)>,
     pub statistics: Statistics,
     pub(crate) variable_in_scope: BTreeSet<usize>,
     pub(crate) constraint_indexes_in_scope: BTreeSet<usize>,
@@ -43,6 +47,7 @@ impl Solver {
             learned_clauses_by_variables: Vec::new(),
             learned_clauses: Vec::new(),
             result_stack: Vec::new(),
+            ddnnf_stack: Vec::new(),
             number_unsat_constraints,
             number_unassigned_variables: number_variables,
             cache: HashMap::with_capacity(100),
@@ -76,7 +81,7 @@ impl Solver {
         solver
     }
 
-    pub fn solve(&mut self) -> BigUint {
+    pub fn solve(&mut self) -> SolverResult {
         use std::time::Instant;
         let now = Instant::now();
         let result = self.count();
@@ -88,34 +93,55 @@ impl Solver {
         result
     }
 
-    fn count(&mut self) -> BigUint {
+    fn count(&mut self) -> SolverResult {
         if !self.simplify(){
             //after simplifying formula violated constraint detected
-            return BigUint::zero();
+            return SolverResult{
+                model_count: BigUint::zero(),
+                ddnnf: DDNNF{
+                    root_node: Rc::new(FalseLeave(0)),
+                    number_variables: self.pseudo_boolean_formula.number_variables
+                }
+            };
         }
 
         loop {
             if self.number_unsat_constraints <= 0 {
                 //current assignment satisfies all constraints
                 self.result_stack.push(BigUint::from(2 as u32).pow(self.number_unassigned_variables));
+                self.ddnnf_stack.push(Rc::new(TrueLeave));
                 self.next_variables.clear();
                 if !self.backtrack(){
                     //nothing to backtrack to, we searched the whole space
-                    return self.result_stack.pop().unwrap();
+                    return SolverResult{
+                        model_count: self.result_stack.pop().unwrap(),
+                        ddnnf: DDNNF{
+                            root_node: self.ddnnf_stack.pop().unwrap(),
+                            number_variables: self.pseudo_boolean_formula.number_variables
+                        }
+                    };
                 }
                 continue
             }
 
             #[cfg(feature = "cache")]
             {
+                //TODO cache d-dnnf nodes
                 let cached_result = self.get_cached_result();
-                if let Some(c) = cached_result {
-                    self.result_stack.push(c);
+                if let Some((mc, ddnnf_ref)) = cached_result {
+                    self.ddnnf_stack.push(Rc::clone(&ddnnf_ref));
+                    self.result_stack.push(mc);
                     self.next_variables.clear();
                     self.statistics.cache_hits += 1;
                     if !self.backtrack(){
                         //nothing to backtrack to, we searched the whole space
-                        return self.result_stack.pop().unwrap();
+                        return SolverResult{
+                            model_count: self.result_stack.pop().unwrap(),
+                            ddnnf: DDNNF{
+                                root_node: self.ddnnf_stack.pop().unwrap(),
+                                number_variables: self.pseudo_boolean_formula.number_variables
+                            }
+                        };
                     }
                     continue;
                 }
@@ -158,10 +184,17 @@ impl Solver {
                 None => {
                     //there are no free variables to assign a value to
                     self.result_stack.push(BigUint::zero());
+                    self.ddnnf_stack.push(Rc::new(FalseLeave(1)));
                     self.next_variables.clear();
                     if !self.backtrack(){
                         //nothing to backtrack to, we searched the whole space
-                        return self.result_stack.pop().unwrap();
+                        return SolverResult{
+                            model_count: self.result_stack.pop().unwrap(),
+                            ddnnf: DDNNF{
+                                root_node: self.ddnnf_stack.pop().unwrap(),
+                                number_variables: self.pseudo_boolean_formula.number_variables
+                            }
+                        };
                     }
                 },
                 Some((var_index, var_sign)) => {
@@ -172,10 +205,18 @@ impl Solver {
                         self.safe_conflict_clause(constraint_index);
 
                         self.result_stack.push(BigUint::zero());
+                        self.ddnnf_stack.push(Rc::new(FalseLeave(2)));
+
                         self.next_variables.clear();
                         if !self.backtrack(){
                             //nothing to backtrack to, we searched the whole space
-                            return self.result_stack.pop().unwrap();
+                            return SolverResult{
+                                model_count: self.result_stack.pop().unwrap(),
+                                ddnnf: DDNNF{
+                                    root_node: self.ddnnf_stack.pop().unwrap(),
+                                    number_variables: self.pseudo_boolean_formula.number_variables
+                                }
+                            };
                         }
                     }
                 }
@@ -214,16 +255,6 @@ impl Solver {
             }
         }
         true
-    }
-
-    fn print_assignment_stack(&self) {
-        println!("---");
-        for e in &self.assignment_stack {
-            if let Assignment(va) = e{
-                println!("{} = {} @ {} - {:?}",  self.pseudo_boolean_formula.name_map.get_by_right(&va.variable_index).unwrap(), va.variable_sign, va.decision_level, va.assignment_kind);
-            }
-        }
-        println!("---");
     }
 
     fn decide(&mut self) -> Option<(u32,bool)>{
@@ -423,8 +454,43 @@ impl Solver {
                 match top_element {
                     Assignment(last_assignment) => {
                         if last_assignment.decision_level == 0{
-                            return false;
+                            let ddnnf_node = self.ddnnf_stack.pop().unwrap();
+                            if let AndNode(child_list) = (*ddnnf_node).clone() {
+                                let mut new_child_list = Vec::new();
+                                for node in child_list {
+                                    new_child_list.push(node.clone());
+                                }
+                                new_child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{index: last_assignment.variable_index, positive: last_assignment.variable_sign}))));
+                                self.ddnnf_stack.push(Rc::new(AndNode(new_child_list)));
+                            }else {
+                                let mut child_list = Vec::new();
+                                child_list.push(ddnnf_node);
+                                child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{index: last_assignment.variable_index, positive: last_assignment.variable_sign}))));
+                                let and_node = AndNode(child_list);
+                                self.ddnnf_stack.push(Rc::new(and_node));
+                            }
+                            self.undo_last_assignment();
                         }else if let Propagated(_) = last_assignment.assignment_kind {
+                            let ddnnf_node = self.ddnnf_stack.pop().unwrap();
+                            if let AndNode(child_list) = (*ddnnf_node).clone() {
+                                let mut new_child_list = Vec::new();
+                                for node in child_list {
+                                    new_child_list.push(node.clone());
+                                }
+                                new_child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{index: last_assignment.variable_index, positive: last_assignment.variable_sign}))));
+                                self.ddnnf_stack.push(Rc::new(AndNode(new_child_list)));
+                            }else if let FalseLeave(_) = (*ddnnf_node).clone() {
+                                self.ddnnf_stack.push(Rc::new(FalseLeave(10)));
+                            }
+                            else{
+                                let mut child_list = Vec::new();
+                                if !matches!(*ddnnf_node, TrueLeave) {
+                                    child_list.push(ddnnf_node);
+                                }
+                                child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{index: last_assignment.variable_index, positive: last_assignment.variable_sign}))));
+                                let and_node = AndNode(child_list);
+                                self.ddnnf_stack.push(Rc::new(and_node));
+                            }
                             self.undo_last_assignment();
                         }else if last_assignment.assignment_kind == FirstDecision {
                             let index = last_assignment.variable_index;
@@ -440,6 +506,7 @@ impl Solver {
                                 #[cfg(feature = "clause_learning")]
                                 self.safe_conflict_clause(constraint_index);
                                 self.result_stack.push(BigUint::zero());
+                                self.ddnnf_stack.push(Rc::new(FalseLeave(3)));
 
                             }else{
                                 return true;
@@ -449,13 +516,86 @@ impl Solver {
                             let r2 = self.result_stack.pop().unwrap();
                             let res = r1+r2;
                             self.result_stack.push(res.clone());
+
+                            let mut d1 = self.ddnnf_stack.pop().unwrap();
+                            if let TrueLeave = *d1 {
+                                d1 = Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{
+                                    index: last_assignment.variable_index,
+                                    positive: last_assignment.variable_sign,
+                                })));
+                            }else if !matches!(*d1, FalseLeave(_)){
+                                if let AndNode(child_list) = (*d1).clone() {
+                                    let mut new_child_list = Vec::new();
+                                    for child in child_list {
+                                        new_child_list.push(child);
+                                    }
+                                    new_child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{
+                                        index: last_assignment.variable_index,
+                                        positive: last_assignment.variable_sign,
+                                    }))));
+                                    d1 = Rc::new(AndNode(new_child_list));
+                                }else {
+                                    let mut child_list = Vec::new();
+                                    child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{
+                                        index: last_assignment.variable_index,
+                                        positive: last_assignment.variable_sign,
+                                    }))));
+                                    child_list.push(d1);
+                                    d1 = Rc::new(AndNode(child_list));
+                                }
+                            }
+
+
+                            let mut d2 = self.ddnnf_stack.pop().unwrap();
+                            if let TrueLeave = *d2 {
+                                d2 = Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{
+                                    index: last_assignment.variable_index,
+                                    positive: !last_assignment.variable_sign,
+                                })));
+                            }else if !matches!(*d2, FalseLeave(_)) {
+                                if let AndNode(child_list) = (*d2).clone() {
+                                    let mut new_child_list = Vec::new();
+                                    for child in child_list {
+                                        new_child_list.push(child);
+                                    }
+                                    new_child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{
+                                        index: last_assignment.variable_index,
+                                        positive: !last_assignment.variable_sign,
+                                    }))));
+                                    d2 = Rc::new(AndNode(new_child_list));
+                                }else {
+                                    let mut child_list = Vec::new();
+                                    child_list.push(Rc::new(LiteralLeave(Rc::new(DDNNFLiteral{
+                                        index: last_assignment.variable_index,
+                                        positive: !last_assignment.variable_sign,
+                                    }))));
+                                    child_list.push(d2);
+                                    d2 = Rc::new(AndNode(child_list));
+                                }
+                            }
+
+                            let d_res;
+                            if matches!(*d1, FalseLeave(_)) && matches!(*d2, FalseLeave(_)) {
+                                d_res = Rc::new(FalseLeave(4));
+                            }else if matches!(*d2, FalseLeave(_)) {
+                                d_res = d1;
+                            }else if matches!(*d1, FalseLeave(_)) {
+                                d_res = d2;
+                            }else{
+                                d_res = Rc::new(DDNNFNode::OrNode(
+                                    vec![d1,d2]
+                                ));
+                            }
+                            let ddnnf_ref = d_res.clone();
+                            self.ddnnf_stack.push(d_res);
+
                             self.next_variables.clear();
                             self.decision_level -= 1;
 
                             self.undo_last_assignment();
 
                             #[cfg(feature = "cache")]
-                            self.cache(res);
+                            self.cache(res, ddnnf_ref);
                         }
                     },
                     ComponentBranch(last_branch) => {
@@ -468,9 +608,18 @@ impl Solver {
                             }
 
                             let mut branch_result = BigUint::one();
+                            let mut zero_flag = false;
+                            let mut child_nodes = Vec::new();
                             for _ in 0..last_branch.components.len(){
                                 branch_result = branch_result * self.result_stack.pop().unwrap();
+                                let child_node = self.ddnnf_stack.pop().unwrap();
+                                if let FalseLeave(_) = *child_node {
+                                    zero_flag = true;
+                                }
+                                child_nodes.push(child_node);
                             }
+                            let ddnnf_node = if zero_flag {FalseLeave(5)} else { AndNode(child_nodes) };
+                            self.ddnnf_stack.push(Rc::new(ddnnf_node));
 
                             self.result_stack.push(branch_result);
                             self.next_variables.clear();
@@ -597,7 +746,7 @@ impl Solver {
     }
 
     #[cfg(feature = "cache")]
-    fn cache(&mut self, value: BigUint) {
+    fn cache(&mut self, mc: BigUint, ddnnf_ref: Rc<DDNNFNode>) {
         if self.number_unsat_constraints > 0 {
             /*
             if self.cache.contains_key(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.variable_in_scope, &self.constraint_indexes_in_scope)){
@@ -610,16 +759,16 @@ impl Solver {
                 }
             }
              */
-            self.cache.insert(calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope), value);
+            self.cache.insert(calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope), (mc, ddnnf_ref));
             self.statistics.cache_entries += 1;
         }
     }
 
     #[cfg(feature = "cache")]
-    fn get_cached_result(&mut self) -> Option<BigUint> {
+    fn get_cached_result(&mut self) -> Option<(BigUint, Rc<DDNNFNode>)> {
         match self.cache.get(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope)) {
             None => None,
-            Some(c) => Some(c.clone())
+            Some((mc, ddnnf_ref)) => Some((mc.clone(), Rc::clone(ddnnf_ref)))
         }
     }
 
@@ -893,18 +1042,24 @@ pub(crate) enum AssignmentKind {
     SecondDecision
 }
 
+pub struct SolverResult {
+    pub(crate) model_count: BigUint,
+    pub(crate) ddnnf: DDNNF,
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use crate::parsing;
+    use crate::solving::ddnnf::DDNNFPrinter;
     use super::*;
 
     #[test]
     fn test_ex_1() {
-        let opb_file = parsing::parser::parse("x1 + x2 >= 0;\n3 x2 + x3 + x4 + x5 >= 3;").expect("error while parsing");
+        let opb_file = parsing::parser::parse("#variable= 5 #constraint= 2\nx1 + x2 >= 0;\n3 x2 + x3 + x4 + x5 >= 3;").expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
         let mut solver = Solver::new(formula);
-        let model_count = solver.solve();
+        let model_count = solver.solve().model_count;
         assert_eq!(model_count, BigUint::from(18 as u32));
     }
 
@@ -913,7 +1068,7 @@ mod tests {
         let opb_file = parsing::parser::parse("x1 + x2 >= 1;\n3 x2 + x3 + x4 + x5 >= 3;").expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
         let mut solver = Solver::new(formula);
-        let model_count = solver.solve();
+        let model_count = solver.solve().model_count;
         assert_eq!(model_count, BigUint::from(17 as u32));
     }
 
@@ -923,17 +1078,27 @@ mod tests {
         let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
         let mut solver = Solver::new(formula);
-        let model_count = solver.solve();
+        let result = solver.solve();
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new()};
+        let ddnnf = printer.print();
+        //let ddnnf = result.ddnnf.get_d4_string_representation();
+        fs::write("berkely_p2d.d4", ddnnf);
+        let model_count = result.model_count;
         println!("{:#?}", solver.statistics);
         assert_eq!(model_count, BigUint::from(4080389785 as u32));
     }
 
     #[test]
     fn test_ex_4() {
-        let opb_file = parsing::parser::parse("a + b + c >= 1;\nx + y + z >= 2;\na + x >= 1;\nx1 + x2 + x3 >= 1;\n").expect("error while parsing");
+        let opb_file = parsing::parser::parse("#variable= 5 #constraint= 2\na + b + c >= 1;\nx + y + z >= 2;\na + x >= 1;\n").expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
         let mut solver = Solver::new(formula);
-        let model_count = solver.solve();
+        let result = solver.solve();
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new()};
+        let ddnnf = printer.print();
+        //let ddnnf = result.ddnnf.get_d4_string_representation();
+        fs::write("test.d4", ddnnf);
+        let model_count = result.model_count;
         println!("{:#?}", solver.statistics);
         assert_eq!(model_count, BigUint::from(175 as u32));
     }
@@ -944,8 +1109,39 @@ mod tests {
         let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
         let mut solver = Solver::new(formula);
-        let model_count = solver.solve();
+        let model_count = solver.solve().model_count;
         println!("{:#?}", solver.statistics);
         assert_eq!(model_count, BigUint::from(97451212554676 as u128));
+    }
+
+    #[test]
+    fn test_ex_6() {
+        let opb_file = parsing::parser::parse("#variable= 3 #constraint= 1\n2 x + y + z >= 2;\n").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let result = solver.solve();
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new()};
+        let ddnnf = printer.print();
+        //let ddnnf = result.ddnnf.get_d4_string_representation();
+        fs::write("test.d4", ddnnf);
+        let model_count = result.model_count;
+        println!("{:#?}", solver.statistics);
+        assert_eq!(model_count, BigUint::from(5 as u32));
+    }
+
+    #[test]
+    fn test_ex_7() {
+        let file_content = fs::read_to_string("./test_models/automotive2_4.opb").expect("cannot read file");
+        let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let result = solver.solve();
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new()};
+        let ddnnf = printer.print();
+        //let ddnnf = result.ddnnf.get_d4_string_representation();
+        fs::write("automotive2_p2d.d4", ddnnf);
+        let model_count = result.model_count;
+        println!("{:#?}", solver.statistics);
+        assert_eq!(model_count, BigUint::from(4080389785 as u32));
     }
 }

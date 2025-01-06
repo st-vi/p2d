@@ -329,13 +329,6 @@ impl Constraint {
         }
         Literal{index: max_literal_index, factor: max_literal_factor, positive: max_literal_sign}
     }
-
-    pub fn print(&self, pseudo_boolean_formula: &PseudoBooleanFormula) {
-        for (_, l) in &self.literals {
-            print!(" + {} * {}", l.factor, pseudo_boolean_formula.name_map.get_by_right(&l.index).unwrap());
-        }
-        println!(" {:?} {}", self.constraint_type, self.degree);
-    }
 }
 
 fn replace_equal_equations(equation: &Equation) -> Vec<Equation> {
