@@ -19,9 +19,16 @@ impl DDNNFPrinter {
     pub fn print(&mut self) -> String {
         let mut result_string = String::new();
         let root_node = &self.ddnnf.root_node.clone();
-        let result = self.print_node(root_node, 0);
-        result_string.push_str(&*result);
-        //result_string.insert_str(0,&format!("nnf {} {} {}\n", self.current_node_id, self.edge_counter, self.ddnnf.number_variables));
+        if let DDNNFNode::FalseLeave(_) = **root_node {
+            //result_string.push_str(&format!("nnf {} {} {}\n", 2, 1, self.ddnnf.number_variables));
+            result_string.push_str("o 1 0\n");
+            result_string.push_str("f 2 0\n");
+            result_string.push_str("1 2 1 0\n");
+        }else{
+            let result = self.print_node(root_node, 0);
+            result_string.push_str(&*result);
+            //result_string.insert_str(0,&format!("nnf {} {} {}\n", self.current_node_id, self.edge_counter, self.ddnnf.number_variables));
+        }
         result_string
     }
 
