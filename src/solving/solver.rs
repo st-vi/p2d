@@ -758,14 +758,14 @@ impl Solver {
                 }
             }
              */
-            self.cache.insert(calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope), (mc, ddnnf_ref));
+            self.cache.insert(calculate_hash(&self.variable_in_scope, &self.assignments, &mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope), (mc, ddnnf_ref));
             self.statistics.cache_entries += 1;
         }
     }
 
     #[cfg(feature = "cache")]
     fn get_cached_result(&mut self) -> Option<(BigUint, Rc<DDNNFNode>)> {
-        match self.cache.get(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope)) {
+        match self.cache.get(&calculate_hash(&self.variable_in_scope, &self.assignments,&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope)) {
             None => None,
             Some((mc, ddnnf_ref)) => Some((mc.clone(), Rc::clone(ddnnf_ref)))
         }
