@@ -1,6 +1,7 @@
 use std::{fs};
 use std::collections::HashMap;
 use clap::{Arg, Command};
+use clap::builder::Str;
 use crate::solving::ddnnf::DDNNFPrinter;
 use crate::solving::pseudo_boolean_datastructure::PseudoBooleanFormula;
 use crate::solving::solver::Solver;
@@ -24,6 +25,7 @@ mod partitioning {
 }
 
 fn main() {
+
     let matches = Command::new("p2d")
         .version("1.0")
         .about("Transforms a set of pseudo-boolean constraints into d d-DNNF (and calculates the model count)")
@@ -57,6 +59,14 @@ fn main() {
 
     run_not_rec(input_file, mode, optional_output_file);
 
+
+
+
+
+
+
+    //run_not_rec("/home/stefan/stefan-vill-master/eval/tmp_files/automotive2_4.uvl-2584776141829492590.opb", "ddnnf", Some(&String::from("/home/stefan/test/p2d.nnf")));
+
 }
 
 fn run_not_rec(input_path: &str, mode: &str, output_file: Option<&String>){
@@ -72,7 +82,7 @@ fn run_not_rec(input_path: &str, mode: &str, output_file: Option<&String>){
         if output_file.is_none() {
             panic!("Missing output file!")
         }
-        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new(), edge_counter: 0};
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new(), edge_counter: 0, node_counter: 0};
         let ddnnf = printer.print();
         fs::write(output_file.unwrap(), ddnnf).expect("Error while writing outputfile");
     }

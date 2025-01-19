@@ -19,4 +19,4 @@ cache = []
 disconnected_components = []
 clause_learning = []
 
-default = ["show_progress", "clause_learning", "disconnected_components", "cache"]
+default = ["show_progress", "disconnected_components", "clause_learning", "cache"]
