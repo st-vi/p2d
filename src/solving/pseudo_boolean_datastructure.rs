@@ -461,7 +461,7 @@ impl PseudoBooleanFormula {
 
 pub fn calculate_hash(variables_in_scope: & BTreeSet<usize>, assigments: &Vec<Option<(u32, bool)>>, t: &mut PseudoBooleanFormula, n: u32, constraint_indexes_in_scope: &BTreeSet<usize>) -> u64 {
     let mut s = DefaultHasher::new();
-    //t.hash(&mut s, constraint_indexes_in_scope);
+    t.hash(&mut s, constraint_indexes_in_scope);
     n.hash(&mut s);
 
     variables_in_scope.hash(&mut s);
