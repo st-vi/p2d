@@ -191,32 +191,55 @@ fn parse_equation_kind(rule: Pair<Rule>) -> Result<EquationKind, String> {
 
 #[cfg(test)]
 mod tests {
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use serial_test::serial;
+    use crate::parsing;
     use super::*;
 
     #[test]
-    fn test_parse() {
-        let opb_file = parse("x1 + x2 - 3*x3 >= 7");
-        if let Ok(o) = opb_file {
-            assert_eq!(o.equations.len(), 1);
-            let equations = o.equations.get(0).unwrap();
-            assert_eq!(equations.rhs, 7);
-            assert_eq!(equations.kind, EquationKind::Ge);
-            assert_eq!(equations.lhs.len(), 3);
-            let s1_index = o.name_map.get_by_left("x1").unwrap();
-            assert_eq!(equations.lhs.get(0).unwrap().variable_index, *s1_index);
-            assert_eq!(equations.lhs.get(0).unwrap().factor, 1);
-            assert_eq!(equations.lhs.get(0).unwrap().positive, true);
-            let s2_index = o.name_map.get_by_left("x2").unwrap();
-            assert_eq!(equations.lhs.get(1).unwrap().variable_index, *s2_index);
-            assert_eq!(equations.lhs.get(1).unwrap().factor, 1);
-            assert_eq!(equations.lhs.get(1).unwrap().positive, true);
-            let s3_index = o.name_map.get_by_left("x3").unwrap();
-            assert_eq!(equations.lhs.get(2).unwrap().variable_index, *s3_index);
-            assert_eq!(equations.lhs.get(2).unwrap().factor, -3);
-            assert_eq!(equations.lhs.get(2).unwrap().positive, true);
-        } else {
-            assert!(false);
+    fn test_ex_1() {
+        let result = parsing::parser::parse("");
+
+        match result {
+            Err(err) => {
+                assert_eq!(err, "Parsing error!  --> 1:1\n  |\n1 | \n  | ^---\n  |\n  = expected header".to_string());
+            }
+            Ok(_) => panic!("Expected an error, but got Ok instead."),
+        }
+    }
+
+    #[test]
+    fn test_ex_2() {
+        let result = parsing::parser::parse("#variable= 0 #constraint= 0\n");
+
+        match result {
+            Err(err) => {
+                assert_eq!(err, "Parsing error!  --> 2:1\n  |\n2 | \n  | ^---\n  |\n  = expected first_literal".to_string());
+            }
+            Ok(_) => panic!("Expected an error, but got Ok instead."),
+        }
+    }
+
+    #[test]
+    fn test_ex_3() {
+        let result = parsing::parser::parse("#variable= 2 #constraint= 1\nx1 * x2 >= 1");
+
+        match result {
+            Err(err) => {
+                assert_eq!(err, "Parsing error!  --> 2:4\n  |\n2 | x1 * x2 >= 1\n  |    ^---\n  |\n  = expected factor_sign or equation_kind".to_string());
+            }
+            Ok(_) => panic!("Expected an error, but got Ok instead."),
+        }
+    }
+
+    #[test]
+    fn test_ex_4() {
+        let result = parsing::parser::parse("#variable= 2 #constraint= 1\nx1 + x2 _ 1;\n");
+
+        match result {
+            Err(err) => {
+                assert_eq!(err, "Parsing error!  --> 2:9\n  |\n2 | x1 + x2 _ 1;\n  |         ^---\n  |\n  = expected factor_sign or equation_kind".to_string());
+            }
+            Ok(_) => panic!("Expected an error, but got Ok instead."),
         }
     }
 }

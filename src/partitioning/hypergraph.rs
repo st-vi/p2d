@@ -89,17 +89,8 @@ impl Hypergraph {
             while !to_visit.is_empty() {
 
                 let constraint_index = to_visit.pop().unwrap();
-                if constraint_index as usize >= partvec.len() {
-                    println!("test");
-                }
-                if partvec.get(constraint_index as usize).is_none(){
-                    println!("{}", constraint_index);
-                    println!("{}", self.current_constraint_index);
-                }
+
                 if let Some(label) = partvec.get(constraint_index as usize).unwrap() {
-                    if *label != current_partition_label {
-                        println!("test");
-                    }
                     continue;
                 }
                 number_visited += 1;
@@ -193,9 +184,6 @@ impl Hypergraph {
             component_based_formula.components.push(component);
         }
 
-        if component_based_formula.previous_number_unassigned_variables as u32 != component_based_formula.components.iter().map(|x| x.number_unassigned_variables).sum() {
-            println!("test");
-        }
         component_based_formula
     }
 }

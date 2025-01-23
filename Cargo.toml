@@ -12,6 +12,7 @@ libc = "0.2.159"
 num-bigint = "0.4"
 num-traits = "0.2"
 clap = { version = "4.3", features = ["derive"] }
+serial_test = "3.2.0"
 
 [features]
 show_progress = []

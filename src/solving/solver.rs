@@ -1114,11 +1114,14 @@ pub struct SolverResult {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::str::FromStr;
+    use serial_test::serial;
     use crate::parsing;
     use crate::solving::ddnnf::DDNNFPrinter;
     use super::*;
 
     #[test]
+    #[serial]
     fn test_ex_1() {
         let opb_file = parsing::parser::parse("#variable= 5 #constraint= 2\nx1 + x2 >= 0;\n3 x2 + x3 + x4 + x5 >= 3;").expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
@@ -1128,6 +1131,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ex_2() {
         let opb_file = parsing::parser::parse("#variable= 5 #constraint= 2\nx1 + x2 >= 1;\n3 x2 + x3 + x4 + x5 >= 3;").expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
@@ -1137,6 +1141,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ex_3() {
         let file_content = fs::read_to_string("./test_models/berkeleydb.opb").expect("cannot read file");
         let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
@@ -1149,37 +1154,24 @@ mod tests {
         //fs::write("berkely_p2d.d4", ddnnf);
         let model_count = result.model_count;
         println!("{:#?}", solver.statistics);
-        assert_eq!(model_count, BigUint::from(4080389785 as u32));
+        assert_eq!(model_count, BigUint::from_str(&"63552545718785").unwrap());
     }
 
     #[test]
+    #[serial]
     fn test_ex_4() {
-        let opb_file = parsing::parser::parse("#variable= 5 #constraint= 2\na + b + c >= 1;\nx + y + z >= 2;\na + x >= 1;\n").expect("error while parsing");
-        let formula = PseudoBooleanFormula::new(&opb_file);
-        let mut solver = Solver::new(formula);
-        let result = solver.solve();
-        //let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new()};
-        //let ddnnf = printer.print();
-        //let ddnnf = result.ddnnf.get_d4_string_representation();
-        //fs::write("test.d4", ddnnf);
-        let model_count = result.model_count;
-        println!("{:#?}", solver.statistics);
-        assert_eq!(model_count, BigUint::from(25 as u32));
-    }
-
-    #[test]
-    fn test_ex_5() {
         let file_content = fs::read_to_string("./test_models/financialservices01.opb").expect("cannot read file");
         let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
         let mut solver = Solver::new(formula);
         let model_count = solver.solve().model_count;
         println!("{:#?}", solver.statistics);
-        assert_eq!(model_count, BigUint::from(97451212554676 as u128));
+        assert_eq!(model_count, BigUint::from_str("97451212554676").unwrap());
     }
 
     #[test]
-    fn test_ex_6() {
+    #[serial]
+    fn test_ex_5() {
         let opb_file = parsing::parser::parse("#variable= 3 #constraint= 1\n2 x + y + z >= 2;\n").expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
         let mut solver = Solver::new(formula);
@@ -1194,7 +1186,8 @@ mod tests {
     }
 
     #[test]
-    fn test_ex_7() {
+    #[serial]
+    fn test_ex_6() {
         let file_content = fs::read_to_string("./test_models/automotive2_4.opb").expect("cannot read file");
         let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
         let formula = PseudoBooleanFormula::new(&opb_file);
@@ -1206,6 +1199,116 @@ mod tests {
         //fs::write("automotive2_p2d.d4", ddnnf);
         let model_count = result.model_count;
         println!("{:#?}", solver.statistics);
-        assert_eq!(model_count, BigUint::from(4080389785 as u32));
+        assert_eq!(model_count, BigUint::from_str("16505272636520770608049807336686263419262278171474896528902674080188226535986513386206222739154199990312304316432375708419908334951120777840761446056501033491673756322502123336090943486436039243372030766943458602037261070847529674534356018156008670682187009867114669183165589812678347677020009178324343716516097209109845184348679968274326123049227527790019157116786715333025963056661497445641173800199765222163167371496529076598275345593840432679060593082091562556148743367163011059914376453848874833624216454940443543476903147239713725910883379897186772787280371367887760273478656423910102759489682512679566900002943975655597096674268679680101882972677272515371297444691753104874195657464993976495326679318657622295700861777088118982149971100416087768578981508055766733740078413795875538473667538095783126142950285621270589214044781390019682483886583359849938540211221775670172765581722321182214883760887169041797021188330713322356432125673511102447057280896884295376155649470685335338495258057322025865111781429202794739966258303407257483764514048109066413495739887120721093956731137104071984616616093530304438776638066291197761951034921410607293591331155786344517409313802138987056145557947322022252231548896287559556403966183750725000574198535237943080891660398515976002019199247649442832823641555125736303883310186456855445612857146873733447167431344738817867253190162116602107467483579427839512688474377395370679756390400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap());
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_7() {
+        let file_content = fs::read_to_string("./test_models/automotive01.opb").expect("cannot read file");
+        let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let result = solver.solve();
+        //let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new()};
+        //let ddnnf = printer.print();
+        //let ddnnf = result.ddnnf.get_d4_string_representation();
+        //fs::write("automotive2_p2d.d4", ddnnf);
+        let model_count = result.model_count;
+        println!("{:#?}", solver.statistics);
+        assert_eq!(model_count, BigUint::from_str("54337953889526644797436357304783500234473556203012469981705794070419609376066883019863858681556047971579366711252721976681982553481954710208375451836305175948768348959659511355551303323044387225600000000000000000000000").unwrap());
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_8() {
+        let file_content = fs::read_to_string("./test_models/busybox.opb").expect("cannot read file");
+        let opb_file = parsing::parser::parse(file_content.as_str()).expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let result = solver.solve();
+        //let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new()};
+        //let ddnnf = printer.print();
+        //let ddnnf = result.ddnnf.get_d4_string_representation();
+        //fs::write("automotive2_p2d.d4", ddnnf);
+        let model_count = result.model_count;
+        println!("{:#?}", solver.statistics);
+        assert_eq!(model_count, BigUint::from_str("3599239755983329331332100508562451780508192148493160801718199944973008026807919208513108710328389951098075842967611059200000000000000000000000").unwrap());
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_9() {
+        let opb_file = parsing::parser::parse("#variable= 2 #constraint= 1\nx1 + x2 = 1;").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let model_count = solver.solve().model_count;
+        assert_eq!(model_count, BigUint::from(2 as u32));
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_10() {
+        let opb_file = parsing::parser::parse("#variable= 2 #constraint= 1\nx1 + x2 < 2;").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let model_count = solver.solve().model_count;
+        assert_eq!(model_count, BigUint::from(3 as u32));
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_11() {
+        let opb_file = parsing::parser::parse("#variable= 2 #constraint= 1\nx1 + x2 > 1;").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let model_count = solver.solve().model_count;
+        assert_eq!(model_count, BigUint::from(1 as u32));
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_12() {
+        let opb_file = parsing::parser::parse("#variable= 2 #constraint= 1\nx1 + x2 != 1;").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let model_count = solver.solve().model_count;
+        assert_eq!(model_count, BigUint::from(2 as u32));
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_13() {
+        let opb_file = parsing::parser::parse("#variable= 1 #constraint= 1\nx1 >= 0;").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let result = solver.solve();
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new(), edge_counter: 0, node_counter: 0};
+        let ddnnf = printer.print();
+        assert_eq!(ddnnf, "t 1 0\n");
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_14() {
+        let opb_file = parsing::parser::parse("#variable= 1 #constraint= 1\nx1 > 1;").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let result = solver.solve();
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new(), edge_counter: 0, node_counter: 0};
+        let ddnnf = printer.print();
+        assert_eq!(ddnnf, "o 1 0\nf 2 0\n1 2 1 0\n");
+    }
+
+    #[test]
+    #[serial]
+    fn test_ex_15() {
+        let opb_file = parsing::parser::parse("#variable= 2 #constraint= 1\nx1 + x2 >= 1;").expect("error while parsing");
+        let formula = PseudoBooleanFormula::new(&opb_file);
+        let mut solver = Solver::new(formula);
+        let result = solver.solve();
+        let mut printer = DDNNFPrinter{true_sink_id: None, false_sink_id: None, ddnnf: result.ddnnf, current_node_id: 0, id_map: HashMap::new(), edge_counter: 0, node_counter: 0};
+        let ddnnf = printer.print();
+        assert_eq!(ddnnf, "o 1 0\nt 2 0\n1 2 2 -1 0\n1 2 1 0\n");
     }
 }

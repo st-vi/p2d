@@ -65,7 +65,11 @@ fn main() {
 
 
 
-    //run_not_rec("/home/stefan/stefan-vill-master/eval/tmp_files/automotive2_4.uvl-2584776141829492590.opb", "ddnnf", Some(&String::from("/home/stefan/test/p2d.nnf")));
+
+
+
+
+    //run_not_rec("./test_models/financialservices01.opb", "ddnnf", Some(&String::from("/home/stefan/test/p2d.nnf")));
 
 }
 
