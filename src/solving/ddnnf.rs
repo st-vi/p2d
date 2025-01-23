@@ -47,7 +47,11 @@ impl DDNNFPrinter {
                     result_string.push_str(&format!("t {} 0\n", id));
                 }
                 if parent_id > 0 {
-                    result_string.push_str(&format!("{} {} 0\n", parent_id, self.true_sink_id.unwrap()));
+                    result_string.push_str(&format!("{} {} ", parent_id, self.true_sink_id.unwrap()));
+                    for (id, sign) in &implied_literals {
+                        result_string.push_str(&format!("{}{} ",if *sign {""} else {"-"}, *id));
+                    }
+                    result_string.push_str(&format!("0\n"));
                     self.edge_counter += 1;
                     self.node_counter += 1;
                 }
@@ -114,11 +118,19 @@ impl DDNNFPrinter {
                     }
                     result_string.push_str(&format!("0\n"));
                 }else if non_literal_children_counter == 1 {
+                    let mut tmp_id = parent_id;
+                    if parent_id == 0 {
+                        let id = self.current_node_id + 1;
+                        self.current_node_id = id;
+                        self.id_map.insert(*node_id, id);
+                        tmp_id = id;
+                        result_string.push_str(&format!("a {} 0\n", id));
+                    }
                     for child_node in child_list {
                         if !matches!(**child_node, DDNNFNode::LiteralLeave(_)){
                             let mut combined = implied_literals.clone();
                             combined.extend(local_implied_literals.iter());
-                            result_string.push_str(&self.print_node(child_node, parent_id, combined));
+                            result_string.push_str(&self.print_node(child_node, tmp_id, combined));
                         }
                     }
                 }else {
