@@ -158,16 +158,18 @@ impl Hypergraph {
         for (index, partition_number) in partvec.iter().enumerate() {
             let constraint_index = self.constraint_index_map.get(index).unwrap();
             let component = component_based_formula.components.get_mut(*partition_number as usize).unwrap();
-            component.constraint_indexes_in_scope.insert(*constraint_index);
+
             let constraint = solver.pseudo_boolean_formula.constraints.get(*constraint_index).unwrap();
-            for (i, _) in &constraint.unassigned_literals {
-                if !component.variables.contains(i) {
-                    component.number_unassigned_variables += 1;
-                    component.variables.insert(*i);
-                }
-            }
+
             if constraint.is_unsatisfied() {
                 component.number_unsat_constraints += 1;
+                component.constraint_indexes_in_scope.insert(*constraint_index);
+                for (i, _) in &constraint.unassigned_literals {
+                    if !component.variables.contains(i) {
+                        component.number_unassigned_variables += 1;
+                        component.variables.insert(*i);
+                    }
+                }
             }
         }
         if self.single_variables.len() > 0 {

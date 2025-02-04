@@ -69,7 +69,7 @@ impl Solver {
             progress_split: 1,
             vsids_scores: Vec::new(),
             dlcs_scores: Vec::new(),
-            unique_id: 0
+            unique_id: 0,
         };
         for i in 0..number_variables{
             solver.assignments.push(None);
@@ -257,6 +257,9 @@ impl Solver {
             match constraint.simplify(){
                 Satisfied => {
                     self.number_unsat_constraints -= 1;
+                    if let ConstraintIndex::NormalConstraintIndex(index) = constraint.index {
+                        self.constraint_indexes_in_scope.remove(&index);
+                    }
                 },
                 Unsatisfied => {
                     return false;
@@ -400,6 +403,7 @@ impl Solver {
                 self.statistics.propagations_from_learned_clauses += 1;
             }
             self.number_unassigned_variables -= 1;
+            self.variable_in_scope.remove(&(index as usize));
             self.assignment_stack.push(Assignment(VariableAssignment {
                 assignment_kind: kind,
                 decision_level: self.decision_level,
@@ -413,6 +417,7 @@ impl Solver {
                 match result {
                     Satisfied => {
                         self.number_unsat_constraints -= 1;
+                        self.constraint_indexes_in_scope.remove(&constraint_index);
                     },
                     Unsatisfied => {
                         propagation_queue.clear();
@@ -724,6 +729,7 @@ impl Solver {
         if let Assignment(last_assignment) = self.assignment_stack.pop().unwrap(){
             self.assignments[last_assignment.variable_index as usize] = None;
             self.number_unassigned_variables += 1;
+            self.variable_in_scope.insert(last_assignment.variable_index as usize);
             //undo in constraints
             for constraint_index in self.pseudo_boolean_formula.constraints_by_variable.get(last_assignment.variable_index as usize).unwrap() {
                 let constraint = self.pseudo_boolean_formula.constraints.get_mut(*constraint_index).unwrap();
@@ -732,6 +738,7 @@ impl Solver {
                 }
                 if constraint.undo(last_assignment.variable_index, last_assignment.variable_sign) {
                     self.number_unsat_constraints += 1;
+                    self.constraint_indexes_in_scope.insert(*constraint_index);
                 }
             }
             //undo in learned clauses
@@ -749,7 +756,7 @@ impl Solver {
     fn get_next_variable(&mut self) -> Option<u32> {
 
         //Self::scale_vector(&mut self.vsids_scores, 0.8);
-        self.update_dlcs_scores();
+        //self.update_dlcs_scores();
 
         if self.next_variables.len() == 1 {
             return self.next_variables.pop();
