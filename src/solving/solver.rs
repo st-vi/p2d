@@ -177,29 +177,6 @@ impl Solver {
                 if self.branch_components() {
                     continue;
                 }
-
-/*
-                if self.decision_level < 8 || self.decision_level % 4 == 1 {
-
-                    if let Some(assignment_entry) = self.assignment_stack.last() {
-                        match assignment_entry {
-                            ComponentBranch(_) => {},
-                            Assignment(_) => {
-                                if self.branch_components() {
-                                    continue;
-                                }
-                            }
-                        }
-                    }else{
-                        if self.branch_components() {
-                            continue;
-                        }
-                    }
-
-
-                }
-
- */
             }
 
             let decided_literal = self.decide();
@@ -374,14 +351,6 @@ impl Solver {
 
 
  */
-
-
-
-
-
-
-
-
 
         while !propagation_queue.is_empty() {
 
@@ -679,31 +648,6 @@ impl Solver {
                         }else{
                             // process next component
                             if let ComponentBranch(mut last_branch) = self.assignment_stack.pop().unwrap() {
-                                //TODO if one component result is zero backtrack beyond branch: It does not work like this
-/*
-                                                                if self.result_stack.last().unwrap().is_zero() {
-                                                                    for _ in 0..=last_branch.current_component {
-                                                                        self.result_stack.pop();
-                                                                        self.ddnnf_stack.pop();
-                                                                        self.next_variables.clear();
-                                                                    }
-                                                                    self.result_stack.push(BigUint::zero());
-                                                                    self.ddnnf_stack.push(Rc::new(FalseLeave));
-                                                                    self.number_unassigned_variables = last_branch.previous_number_unassigned_variables as u32;
-                                                                    self.number_unsat_constraints = last_branch.previous_number_unsat_constraints;
-                                                                    self.variable_in_scope = last_branch.previous_variables_in_scope.clone();
-                                                                    self.assignment_stack.pop();
-                                                                    continue;
-                                                                }
-
-
-
- */
-
-
-
-
-
                                 last_branch.current_component += 1;
                                 self.number_unassigned_variables = last_branch.components.get(last_branch.current_component).unwrap().number_unassigned_variables;
                                 self.number_unsat_constraints = last_branch.components.get(last_branch.current_component).unwrap().number_unsat_constraints as usize;
@@ -755,6 +699,7 @@ impl Solver {
 
     fn get_next_variable(&mut self) -> Option<u32> {
 
+        //TODO only necessary if the scores are used, otherwise just decreases the performance
         //Self::scale_vector(&mut self.vsids_scores, 0.8);
         //self.update_dlcs_scores();
 
@@ -819,17 +764,6 @@ impl Solver {
     #[cfg(feature = "cache")]
     fn cache(&mut self, mc: BigUint, ddnnf_ref: Rc<DDNNFNode>) {
         if self.number_unsat_constraints > 0 {
-            /*
-            if self.cache.contains_key(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.variable_in_scope, &self.constraint_indexes_in_scope)){
-
-                self.statistics.cache_double_entries += 1;
-                let cached_result = self.cache.get(&calculate_hash(&mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.variable_in_scope, &self.constraint_indexes_in_scope)).unwrap();
-                let new_result = &value;
-                if *cached_result != *new_result as u128 {
-                    self.statistics.cache_error += 1;
-                }
-            }
-             */
             self.cache.insert(calculate_hash(&self.variable_in_scope, &self.assignments, &mut self.pseudo_boolean_formula, self.number_unassigned_variables, &self.constraint_indexes_in_scope), (mc, ddnnf_ref));
             self.statistics.cache_entries += 1;
         }

@@ -30,7 +30,7 @@ impl DDNNFPrinter {
             let empty_vec: Vec<(u32, bool)> = Vec::new();
             let result = self.print_node(root_node, 0, empty_vec);
             result_string.push_str(&*result);
-            //result_string.insert_str(0,&format!("nnf {} {} {}\n", self.current_node_id, self.edge_counter, self.ddnnf.number_variables));
+            //TODO header: result_string.insert_str(0,&format!("nnf {} {} {}\n", self.current_node_id, self.edge_counter, self.ddnnf.number_variables));
         }
         println!("number_nodes: {}", self.node_counter);
         result_string
@@ -152,71 +152,8 @@ impl DDNNFPrinter {
                         }
                     }
                 }
-
-                /*
-                let map_entry = self.id_map.get(node_id);
-                if let Some(existing_id) = map_entry {
-                    result_string.push_str(&format!("{} {} 0\n", parent_id, existing_id));
-                    self.edge_counter += 1;
-                    return result_string;
-                }
-                let mut literal_children_list: Vec<(u32, bool)> = Vec::new();
-                for child_node in &*child_list {
-                    if let DDNNFNode::LiteralLeave(ref literal_node) = **child_node {
-                        literal_children_list.push((literal_node.index + 1, literal_node.positive))
-                    }
-                }
-                let id = self.current_node_id + 1;
-                if literal_children_list.len() != child_list.len() {
-                    self.current_node_id = id;
-                    result_string.push_str(&format!("a {} 0\n", id));
-                    self.node_counter += 1;
-                    self.id_map.insert(*node_id, id);
-                    for child_node in child_list.iter() {
-                        if !matches!(**child_node, DDNNFNode::LiteralLeave(_)){
-                            result_string.push_str(&self.print_node(child_node, id));
-                        }
-                    }
-                    if parent_id > 0 {
-                        result_string.push_str(&format!("{} {} 0\n", parent_id, id));
-                        self.edge_counter += 1;
-                    }
-                }
-                if literal_children_list.len() + 1 == child_list.len() {
-                    for child_node in child_list.iter() {
-                        if !matches!(**child_node, DDNNFNode::LiteralLeave(_)){
-                            result_string.push_str(&self.print_node(child_node, id));
-                        }
-                    }
-                    if parent_id > 0 {
-                        result_string.push_str(&format!("{} {} ", parent_id, id));
-                        for (id,sign) in &literal_children_list {
-                            self.node_counter += 1;
-                            result_string.push_str(&format!("{}{} ", if *sign {""} else {"-"}, *id));
-                        }
-                        self.edge_counter += 1;
-                        result_string.push_str(&format!("0\n"));
-                    }
-                }else if literal_children_list.len() > 0 {
-                    if self.true_sink_id.is_none() {
-                        self.true_sink_id = Some(self.current_node_id + 1);
-                        self.current_node_id = self.true_sink_id.unwrap();
-                        result_string.push_str(&format!("t {} 0\n", self.true_sink_id.unwrap()));
-                        self.node_counter += 1;
-                    }
-                    result_string.push_str(&format!("{} {} ", if literal_children_list.len() != child_list.len() {id} else {parent_id}, self.true_sink_id.unwrap()));
-                    self.edge_counter += 1;
-                    for (id,sign) in &literal_children_list {
-                        self.node_counter += 1;
-                        result_string.push_str(&format!("{}{} ", if *sign {""} else {"-"}, *id));
-                    }
-                    result_string.push_str("0\n");
-                }
-
-                 */
             }
             DDNNFNode::OrNode(child_list,node_id) => {
-                //TODO handle single child
                 let map_entry = self.id_map.get(node_id);
                 if let Some(existing_id) = map_entry {
                     result_string.push_str(&format!("{} {} ", parent_id, existing_id));
@@ -261,55 +198,6 @@ impl DDNNFPrinter {
                         result_string.push_str(&self.print_node(child_node, id, local_implied_literals.clone()));
                     }
                 }
-                /*
-                let map_entry = self.id_map.get(node_id);
-                if let Some(existing_id) = map_entry {
-                    result_string.push_str(&format!("{} {} 0\n", parent_id, existing_id));
-                    self.edge_counter += 1;
-                    return result_string;
-                }
-                let mut literal_children_list = Vec::new();
-                for child_node in child_list.iter() {
-                    if let DDNNFNode::LiteralLeave(ref literal_node) = **child_node {
-                        literal_children_list.push((literal_node.index + 1, literal_node.positive))
-                    }
-                }
-
-                let id = self.current_node_id + 1;
-                if literal_children_list.len() != child_list.len() {
-                    self.current_node_id = id;
-                    result_string.push_str(&format!("o {} 0\n", id));
-                    self.node_counter += 1;
-                    self.id_map.insert(*node_id, id);
-                    for child_node in child_list.iter() {
-                        if !matches!(**child_node, DDNNFNode::LiteralLeave(_)){
-                            result_string.push_str(&self.print_node(child_node, id));
-                        }
-                    }
-                    if parent_id > 0 {
-                        result_string.push_str(&format!("{} {} 0\n", parent_id, id));
-                        self.edge_counter += 1;
-                    }
-                }
-
-                if literal_children_list.len() > 0 {
-                    if self.true_sink_id.is_none() {
-                        self.true_sink_id = Some(self.current_node_id + 1);
-                        self.current_node_id = self.true_sink_id.unwrap();
-                        result_string.push_str(&format!("t {} 0\n", id));
-                        self.node_counter += 1;
-                    }
-                    result_string.push_str(&format!("{} {} ", if literal_children_list.len() != child_list.len() {id} else {parent_id}, self.true_sink_id.unwrap()));
-                    self.edge_counter += 1;
-                    for (id,sign) in &literal_children_list {
-                        result_string.push_str(&format!("{}{} ", if *sign {""} else {"-"}, *id));
-                        self.node_counter += 1;
-                    }
-                    result_string.push_str("0\n");
-                }
-
-                 */
-
             }
         }
         result_string

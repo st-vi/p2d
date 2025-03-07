@@ -30,7 +30,6 @@ pub struct Constraint {
     pub hash_value_old: bool,
     pub constraint_type: ConstraintType,
     pub max_literal: Literal,
-    //TODO cashe sum of max literal and update when necessary instead of calculating every time
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -154,16 +153,6 @@ impl Constraint {
             }
         }
 
-
-
-        /*
-        if self.assignments.contains(&(literal.index, !literal.positive)) {
-            return Unsatisfied
-        }else if self.assignments.contains(&(literal.index, literal.positive)){
-            return NothingToPropagated
-        }
-
-         */
         let already_satisfied =  if self.constraint_type == GreaterEqual { self.sum_true >= self.degree as u128 } else {self.sum_unassigned == 0 && self.sum_true != self.degree as u128};
 
         if already_satisfied {
@@ -467,21 +456,6 @@ pub fn calculate_hash(variables_in_scope: & BTreeSet<usize>, assigments: &Vec<Op
     for ci in constraint_indexes_in_scope {
         (ci, t.constraints.get(*ci).unwrap().sum_true).hash(&mut s);
     }
-    //constraint_indexes_in_scope.hash(&mut s);
-
-    /*
-    t.hash(&mut s, constraint_indexes_in_scope);
-    n.hash(&mut s);
-
-    /*
-    variables_in_scope.hash(&mut s);
-    for vi in variables_in_scope {
-        assigments.get(*vi).unwrap().hash(&mut s);
-    }
-
-     */
-
-     */
 
     s.finish()
 }
@@ -501,10 +475,5 @@ impl Constraint {
 
         }
         self.hash_value
-        //self.assignments.hash(state);
-        //for (a,(b,_,_)) in &self.assignments {
-            //(a,b).hash(state);
-        //}
-
     }
 }
