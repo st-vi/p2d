@@ -58,19 +58,6 @@ fn main() {
     let optional_output_file = matches.get_one::<String>("output");
 
     run_not_rec(input_file, mode, optional_output_file);
-
-
-
-
-
-
-
-
-
-
-
-    //run_not_rec("./test_models/financialservices01.opb", "ddnnf", Some(&String::from("/home/stefan/test/p2d.nnf")));
-
 }
 
 fn run_not_rec(input_path: &str, mode: &str, output_file: Option<&String>){
